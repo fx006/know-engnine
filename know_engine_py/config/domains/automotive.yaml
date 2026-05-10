@@ -1,0 +1,93 @@
+domain:
+  domain_id: automotive
+  name: 汽车智能客服
+  description: 面向汽车售前、售后、投诉、保养、营销政策和技术指导的知识库问答领域。
+  fallback_intent: 其他
+  entity_schema:
+    car_model: 车型，如 Model 3、A6L。
+    order_id: 订单号、合同号或服务单号。
+    dealer: 经销商、门店或服务中心名称。
+    fault_description: 具体故障现象描述，如发动机异响。
+    appointment_time: 用户期望的预约时间。
+    part_name: 涉及的汽车零部件，如轮胎、刹车片。
+    function_name: 涉及的车辆功能，如自适应巡航。
+  is_active: 1
+
+intent_recognition:
+  prompt_type: intent_recognition
+  version: 1
+  is_active: 1
+  content_file: prompts/intent-recognition-new-prompt.txt
+
+intents:
+  - intent_name: 售前咨询与购买
+    intent_description: 车型配置、定价政策、试驾预约、经销商门店和库存查询等购车前咨询。
+    retrieval_strategy: hybrid
+    data_sources: '["milvus","es"]'
+    sort_order: 1
+    is_active: 1
+    prompt:
+      prompt_type: chat
+      version: 1
+      is_active: 1
+      content_file: prompts/car-before-sales-query-prompt.txt
+
+  - intent_name: 售后维修与保养
+    intent_description: 维修预约、故障报修、保养服务、维修进度和配件价格等问题。
+    retrieval_strategy: hybrid
+    data_sources: '["milvus","es"]'
+    sort_order: 2
+    is_active: 1
+    prompt:
+      prompt_type: chat
+      version: 1
+      is_active: 1
+      content_file: prompts/car-maintenance-query-prompt.txt
+
+  - intent_name: 车辆使用与技术指导
+    intent_description: 车辆功能操作、仪表盘和故障灯解读、用车技巧、技术原理和 DIY 指导。
+    retrieval_strategy: hybrid
+    data_sources: '["milvus","es"]'
+    sort_order: 3
+    is_active: 1
+    prompt:
+      prompt_type: chat
+      version: 1
+      is_active: 1
+      content_file: prompts/car-tech-support-query-prompt.txt
+
+  - intent_name: 投诉与维权
+    intent_description: 产品质量投诉、服务态度投诉、维修争议、法律或安全诉求。
+    retrieval_strategy: hybrid
+    data_sources: '["milvus","es"]'
+    sort_order: 4
+    is_active: 1
+    prompt:
+      prompt_type: chat
+      version: 1
+      is_active: 1
+      content_file: prompts/car-complaints-query-prompt.txt
+
+  - intent_name: 汽车营销政策
+    intent_description: 会员权益、活动邀约、积分兑换、优惠活动、价格优惠和折扣政策。
+    retrieval_strategy: hybrid
+    data_sources: '["milvus","es"]'
+    sort_order: 5
+    is_active: 1
+    prompt:
+      prompt_type: chat
+      version: 1
+      is_active: 1
+      content_file: prompts/car-marketing-query-prompt.txt
+
+  - intent_name: 其他
+    intent_description: 与汽车相关，但无法归入其他明确分类的模糊意图。
+    retrieval_strategy: hybrid
+    data_sources: '["milvus","es"]'
+    sort_order: 99
+    is_active: 1
+    prompt:
+      prompt_type: chat
+      version: 1
+      is_active: 1
+      content_file: prompts/car-other-query-prompt.txt
