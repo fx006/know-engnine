@@ -25,6 +25,7 @@ env/
 
 # Local paid/reference source and raw materials
 res/
+local_private/
 
 # Logs / temporary files
 *.log
