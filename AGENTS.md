@@ -334,6 +334,39 @@ EMBEDDING_DIMENSIONS=1024
 
 业务代码只依赖 service，不直接散落 DashScope SDK 或 API key。
 
+## Git 提交规范
+
+后续由助手执行 Git 提交时，提交信息使用中文描述，但格式遵循 Conventional Commits：
+
+```text
+<type>(<scope>): <中文摘要>
+```
+
+常用 `type`：
+
+- `feat`：新增功能
+- `fix`：修复问题
+- `docs`：文档更新
+- `test`：测试相关
+- `refactor`：重构，不改变外部行为
+- `chore`：工程配置、依赖、脚本等杂项
+
+示例：
+
+```text
+feat(document): 增加文档切分服务
+fix(prompt): 修复意图识别模板变量渲染
+docs: 记录中文提交信息规范
+test(admin): 补充 Prompt 管理接口测试
+```
+
+提交摘要要求：
+
+- 使用中文，简洁说明本次提交做了什么。
+- 不写空泛描述，例如“更新代码”“修改文件”。
+- 一次提交只覆盖一个相对清晰的主题，避免把无关改动混在一起。
+- 如果提交涉及敏感配置或付费闭源参考资料，提交前必须确认 `.env`、`res/`、`local_private/` 等目录未被纳入 Git。
+
 ## 进度维护要求
 
 每完成一个任务或发生计划调整时，更新：
