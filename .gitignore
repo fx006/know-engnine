@@ -27,6 +27,11 @@ env/
 res/
 local_private/
 
+# Local learning docs and test files
+doc/
+tests/
+know_engine_py/tests/
+
 # Logs / temporary files
 *.log
 tmp/
