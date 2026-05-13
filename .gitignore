@@ -23,6 +23,9 @@ env/
 .continue/
 .DS_Store
 
+# Local agent memory / collaboration instructions
+AGENTS.md
+
 # Local paid/reference source and raw materials
 res/
 local_private/
