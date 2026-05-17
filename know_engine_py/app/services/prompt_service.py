@@ -107,6 +107,16 @@ class PromptService:
 
         return prompt
 
+    async def list_entity_fields(self) -> list[str]:
+        """返回当前启用领域的实体字段列表。
+
+        intent_node 用它把 LLM 返回的 entities 补齐为稳定契约：
+        LLM 未返回的实体字段统一填 None，避免后续 clarify/router 节点面对缺 key。
+        """
+        domain = await self.domain_config_service.get_active_domain()
+        entity_schema = domain.entity_schema or {}
+        return list(entity_schema.keys())
+
     def _render_intent_taxonomy(self, intents) -> str:
         """将数据库中的意图配置渲染成 Prompt 片段。"""
         parts = ["## 意图类别"]

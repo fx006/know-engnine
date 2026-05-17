@@ -11,6 +11,12 @@ from know_engine_py.app.models.document import (
     TableMetaModel,
 )
 
+from know_engine_py.app.models.automotive import (
+    CarInfoModel,
+    MyCarModel,
+    CarOrderModel,
+)
+
 __all__=[
     "Base",
     "BaseEntity",
@@ -22,4 +28,7 @@ __all__=[
     "KnowledgeDocumentModel",
     "KnowledgeSegmentModel",
     "TableMetaModel",
+    "CarInfoModel",
+    "MyCarModel",
+    "CarOrderModel",
 ]

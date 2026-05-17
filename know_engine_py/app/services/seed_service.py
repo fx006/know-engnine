@@ -42,6 +42,22 @@ class SeedService:
                 version=int(intent_recognition_cfg.get("version",1)),
                 is_active=int(intent_recognition_cfg.get("is_active",1)),
             )
+
+        for prompt_cfg in package.get("system_prompts", []):
+            content = self._read_prompt_content(
+                package_dir=package_dir,
+                yaml_dir=yaml_path.parent,
+                content_file=prompt_cfg["content_file"],
+            )
+            await self._upsert_prompt_template(
+                domain_id=domain.domain_id,
+                intent_name="_system_",
+                prompt_type=prompt_cfg["prompt_type"],
+                content=content,
+                version=int(prompt_cfg.get("version", 1)),
+                is_active=int(prompt_cfg.get("is_active", 1)),
+            )
+
         for intent_cfg in package.get("intents",[]):
             intent:IntentConfigModel = await self._upsert_intent(domain.domain_id,intent_cfg)
 
@@ -105,6 +121,7 @@ class SeedService:
 
         intent.intent_description = cfg.get("intent_description")
         intent.retrieval_strategy = cfg.get("retrieval_strategy", "hybrid")
+        intent.preconditions = cfg.get("preconditions")
         intent.data_sources = data_sources
         intent.sort_order = int(cfg.get("sort_order", 0))
         intent.is_active = int(cfg.get("is_active", 1))

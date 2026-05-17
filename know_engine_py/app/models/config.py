@@ -49,6 +49,8 @@ class IntentConfigModel(Base, BaseEntity):
         default='["milvus","es"]',
         server_default='["milvus","es"]',
     )
+    # 决定进入RAG前是否要补充业务实体
+    preconditions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     sort_order: Mapped[int] = mapped_column(
         Integer,
         nullable=False,

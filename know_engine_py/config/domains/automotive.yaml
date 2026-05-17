@@ -5,6 +5,7 @@ domain:
   fallback_intent: 其他
   entity_schema:
     car_model: 车型，如 Model 3、A6L。
+    car_id: 用户提到的具体汽车ID，如 100001、200002。
     order_id: 订单号、合同号或服务单号。
     dealer: 经销商、门店或服务中心名称。
     fault_description: 具体故障现象描述，如发动机异响。
@@ -18,6 +19,16 @@ intent_recognition:
   version: 1
   is_active: 1
   content_file: prompts/intent-recognition-new-prompt.txt
+
+system_prompts:
+  - prompt_type: query_transform
+    version: 1
+    is_active: 1
+    content_file: prompts/query-transform-prompt.txt
+  - prompt_type: common_chat
+    version: 1
+    is_active: 1
+    content_file: prompts/common-chat-prompt.txt
 
 intents:
   - intent_name: 售前咨询与购买
@@ -35,6 +46,20 @@ intents:
   - intent_name: 售后维修与保养
     intent_description: 维修预约、故障报修、保养服务、维修进度和配件价格等问题。
     retrieval_strategy: hybrid
+    preconditions:
+      checks:
+        - entity_field: car_id
+          resolver: automotive_my_car
+          missing_action: card_choice
+          empty_action: warn
+          empty_message: 您还没有添加车辆信息，请先添加车辆信息
+          card_type: CARD_CHOICE_MYCAR
+          card_message: 请先选择车辆
+          display_fields:
+            - carId
+            - fullName
+            - plateNumber
+            - imageUrl
     data_sources: '["milvus","es"]'
     sort_order: 2
     is_active: 1
@@ -47,6 +72,20 @@ intents:
   - intent_name: 车辆使用与技术指导
     intent_description: 车辆功能操作、仪表盘和故障灯解读、用车技巧、技术原理和 DIY 指导。
     retrieval_strategy: hybrid
+    preconditions:
+      checks:
+        - entity_field: car_id
+          resolver: automotive_my_car
+          missing_action: card_choice
+          empty_action: warn
+          empty_message: 您还没有添加车辆信息，请先添加车辆信息
+          card_type: CARD_CHOICE_MYCAR
+          card_message: 请先选择车辆
+          display_fields:
+            - carId
+            - fullName
+            - plateNumber
+            - imageUrl
     data_sources: '["milvus","es"]'
     sort_order: 3
     is_active: 1
@@ -71,6 +110,21 @@ intents:
   - intent_name: 汽车营销政策
     intent_description: 会员权益、活动邀约、积分兑换、优惠活动、价格优惠和折扣政策。
     retrieval_strategy: hybrid
+    preconditions:
+      checks:
+        - entity_field: car_model
+          resolver: automotive_car_info
+          missing_action: card_choice
+          empty_action: skip
+          card_type: CARD_CHOICE_CAR
+          card_message: 请先选择您要咨询的车辆
+          display_fields:
+            - infoId
+            - brand
+            - modelName
+            - fullName
+            - guidePrice
+            - imageUrl
     data_sources: '["milvus","es"]'
     sort_order: 5
     is_active: 1
