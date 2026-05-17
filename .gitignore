@@ -29,6 +29,8 @@ AGENTS.md
 # Local paid/reference source and raw materials
 res/
 local_private/
+new_features/
+new-features/
 
 # Local learning docs and test files
 doc/
