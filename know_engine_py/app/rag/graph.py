@@ -17,12 +17,16 @@ def build_rag_graph(
     transform_node: GraphNode,
     router_node: GraphNode,
     retrieve_node: GraphNode,
+    reranker_node: GraphNode,
+    grader_node: GraphNode,
+    rewrite_node: GraphNode,
+    reference_node: GraphNode,
     generator_node: GraphNode,
 ):
-    """组装 Day6 基础 RAG 状态图。
+    """组装 Corrective RAG 状态图。
 
-    这里只负责 LangGraph 拓扑，具体节点通过参数注入，避免 graph.py 直接依赖
-    数据库 session、PromptService 或具体中间件客户端。
+    这里只负责 LangGraph 拓扑和条件边，具体节点通过参数注入，
+    避免 graph.py 直接依赖数据库 session、PromptService 或具体中间件客户端。
     """
     builder = StateGraph(AgentState)
 
@@ -32,6 +36,10 @@ def build_rag_graph(
     builder.add_node("transform", transform_node)
     builder.add_node("router", router_node)
     builder.add_node("retrieve", retrieve_node)
+    builder.add_node("reranker", reranker_node)
+    builder.add_node("grader", grader_node)
+    builder.add_node("reference", reference_node)
+    builder.add_node("rewrite", rewrite_node)
     builder.add_node("generator", generator_node)
 
     builder.set_entry_point("intent")
@@ -54,10 +62,22 @@ def build_rag_graph(
         },
     )
 
+    builder.add_conditional_edges(
+        "grader",
+        _route_after_grader,
+        {
+            "reference": "reference",
+            "rewrite": "rewrite",
+        },
+    )
+
     builder.add_edge("common_chat", END)
     builder.add_edge("transform", "router")
     builder.add_edge("router", "retrieve")
-    builder.add_edge("retrieve", "generator")
+    builder.add_edge("retrieve", "reranker")
+    builder.add_edge("reranker", "grader")
+    builder.add_edge("rewrite", "router")
+    builder.add_edge("reference", "generator")
     builder.add_edge("generator", END)
 
     return builder.compile()
@@ -73,3 +93,16 @@ def _route_after_clarify(state: AgentState) -> str:
     if state.get("needs_clarification") or state.get("error"):
         return "end"
     return "transform"
+
+
+def _route_after_grader(state: AgentState) -> str:
+    """根据检索评估结果决定是否进入 rewrite 循环。"""
+    if not state.get("needs_rewrite"):
+        return "reference"
+
+    retry_count = state.get("retry_count", 0)
+    max_retries = state.get("max_retries", 0)
+    if retry_count >= max_retries:
+        return "reference"
+
+    return "rewrite"

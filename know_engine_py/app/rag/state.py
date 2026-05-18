@@ -35,6 +35,9 @@ class AgentState(TypedDict, total=False):
     retrieved_docs: list[Document]
     selected_docs: list[Document]
 
+    grade_result: dict[str, Any] | None
+    needs_rewrite: bool
+
     system_prompt: str | None
     response: str | None
 
@@ -75,6 +78,8 @@ def build_initial_state(
         "route_plan": [],
         "retrieved_docs": [],
         "selected_docs": [],
+        "grade_result": None,
+        "needs_rewrite": False,
         "system_prompt": None,
         "response": None,
         "progress_messages": [],

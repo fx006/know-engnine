@@ -29,6 +29,14 @@ system_prompts:
     version: 1
     is_active: 1
     content_file: prompts/common-chat-prompt.txt
+  - prompt_type: retrieval_grader
+    version: 1
+    is_active: 1
+    content_file: prompts/retrieval-grader-prompt.txt
+  - prompt_type: query_rewrite
+    version: 1
+    is_active: 1
+    content_file: prompts/query-rewrite-prompt.txt
 
 intents:
   - intent_name: 售前咨询与购买
