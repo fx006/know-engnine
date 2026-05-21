@@ -25,3 +25,14 @@ class KnowledgeBaseType(str, Enum):
 
     DOCUMENT_SEARCH = "DOCUMENT_SEARCH"
     DATA_QUERY = "DATA_QUERY"
+
+class ChatConversationStatus(str,Enum):
+    """聊天会话状态"""
+    ACTIVE = "active"
+    ARCHIVED = "archived"
+    DELETED = "deleted"
+
+class ChatMessageType(str, Enum):
+    """聊天消息类型。"""
+    USER = "USER"
+    ASSISTANT = "ASSISTANT"

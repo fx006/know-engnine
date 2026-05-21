@@ -11,7 +11,7 @@ ReferenceNode = Callable[[AgentState], Awaitable[AgentState]]
 
 def create_reference_node(
     *,
-    retrieval_source: str = "hybrid",
+    retrieval_source: str|None = "hybrid",
 ) -> ReferenceNode:
     """创建引用抽取节点。
 

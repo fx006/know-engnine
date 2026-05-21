@@ -8,8 +8,12 @@ from langchain_elasticsearch import AsyncBM25Strategy, AsyncElasticsearchStore
 from know_engine_py.app.core.settings import Settings, get_settings
 
 
-class ElasticsearchBM25StoreFactory:
-    """创建用于关键词索引写入的 LangChain Elasticsearch Store。"""
+class ElasticsearchBM25IndexFactory:
+    """创建用于关键词索引写入的 LangChain Elasticsearch Store。
+
+    这个类用于 indexing 阶段：Document -> Elasticsearch BM25 文本索引。
+    查询阶段使用 retrievers.elasticsearch_keyword.ElasticsearchKeywordRetrieverFactory。
+    """
 
     def __init__(
         self,
