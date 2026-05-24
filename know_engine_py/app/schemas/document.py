@@ -57,3 +57,25 @@ class DocumentSplitRequest(BaseModel):
             regex=self.regex,
             separator=self.separator,
         )
+
+
+class DocumentSplitResponse(BaseModel):
+    """文档切分响应：包含切分数量和后续索引任务投递结果。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    document_id: int = Field(alias="documentId")
+    segment_count: int = Field(alias="segmentCount")
+    index_queued: bool = Field(alias="indexQueued")
+    index_task_id: str | None = Field(default=None, alias="indexTaskId")
+    index_queue_error: str | None = Field(default=None, alias="indexQueueError")
+
+
+class DocumentImportResponse(DocumentResponse):
+    """文档导入响应：包含导入结果和后续转换任务投递结果。"""
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    conversion_queued: bool = Field(default=False, alias="conversionQueued")
+    conversion_task_id: str | None = Field(default=None, alias="conversionTaskId")
+    conversion_queue_error: str | None = Field(default=None, alias="conversionQueueError")

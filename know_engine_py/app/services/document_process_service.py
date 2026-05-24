@@ -12,9 +12,11 @@ from know_engine_py.app.models.enums import (
     KnowledgeBaseType,
     SegmentStatus,
 )
+from know_engine_py.app.rag.parsers.base import UnsupportedFileTypeError
 from know_engine_py.app.rag.parsers.factory import ParserFactory
 from know_engine_py.app.rag.splitters.factory import SplitterFactory
 from know_engine_py.app.rag.splitters.types import DocumentSplitParam
+from know_engine_py.app.storage.base import FileStorage
 
 
 class DocumentProcessService:
@@ -32,9 +34,11 @@ class DocumentProcessService:
         self,
         session: AsyncSession,
         parser_factory: ParserFactory | None = None,
+        file_storage: FileStorage | None = None,
     ):
         self.session = session
         self.parser_factory = parser_factory or ParserFactory()
+        self.file_storage = file_storage
 
     async def import_document(
         self,
@@ -46,15 +50,18 @@ class DocumentProcessService:
         accessible_by: str | None = None,
         description: str | None = None,
         knowledge_base_type: str = KnowledgeBaseType.DOCUMENT_SEARCH.value,
+        source_file_url: str | None = None,
     ) -> KnowledgeDocumentModel:
-        """导入文本类文件：上传 → 解析，返回 CONVERTED 状态文档。"""
-        document = await self.upload_document(
+        """导入可直接解析的文本类文件：创建记录 → 解析，返回 CONVERTED 状态文档。"""
+        # 这里的“上传”是创建 DB 记录；物理文件上传已由 FileStorage 完成。
+        document = await self.create_uploaded_document(
             file_name=file_name,
             doc_title=doc_title,
             upload_user=upload_user,
             accessible_by=accessible_by,
             description=description,
             knowledge_base_type=knowledge_base_type,
+            source_file_url=source_file_url,
         )
         return await self.convert_document(
             document.doc_id,
@@ -84,10 +91,7 @@ class DocumentProcessService:
                 f"文档状态不为 {DocumentStatus.CONVERTED.value}，无法切分：{document.status}"
             )
 
-        extension = document.extension or {}
-        parsed_text = extension.get("parsed_text")
-        if not isinstance(parsed_text, str) or not parsed_text.strip():
-            raise ValueError("文档缺少可切分文本")
+        parsed_text = await self._load_converted_text(document)
 
         split_param = split_param or DocumentSplitParam(
             chunk_size=chunk_size,
@@ -139,7 +143,7 @@ class DocumentProcessService:
         )
         return int(result.scalar_one())
 
-    async def upload_document(
+    async def create_uploaded_document(
         self,
         *,
         file_name: str,
@@ -148,14 +152,19 @@ class DocumentProcessService:
         accessible_by: str | None = None,
         description: str | None = None,
         knowledge_base_type: str = KnowledgeBaseType.DOCUMENT_SEARCH.value,
+        source_file_url: str | None = None,
     ) -> KnowledgeDocumentModel:
-        """创建文档记录并置为 UPLOAD，不做内容解析。"""
+        """创建文档记录并置为 UPLOADED，不做内容解析。
+
+        source_file_url 来自 FileStorage.upload_bytes()，不是用户请求入参。
+        """
         if not file_name:
             raise ValueError("file_name 不能为空")
 
+        # source_file_url 来自对象存储；为空时只在单测/本地文本导入中降级为 local URL。
         safe_name = Path(file_name).name
         title = doc_title or safe_name
-        doc_url = f"local://source/{safe_name}"
+        doc_url = source_file_url or f"local://source/{safe_name}"
         document = KnowledgeDocumentModel(
             doc_title=title,
             upload_user=upload_user,
@@ -210,7 +219,8 @@ class DocumentProcessService:
             )
             document.extension = ext
             flag_modified(document, "extension")
-            document.converted_doc_url = f"local://converted/{safe_name}"
+            # txt/md 直通解析不会生成新文件，转换后 URL 复用原始存储地址。
+            document.converted_doc_url = document.doc_url or f"local://converted/{safe_name}"
             document.status = DocumentStatus.CONVERTED.value
             await self.session.flush()
             return document
@@ -218,6 +228,14 @@ class DocumentProcessService:
             document.status = DocumentStatus.UPLOADED.value
             await self.session.flush()
             raise
+
+    def supports_direct_parse(self, file_name: str) -> bool:
+        """判断文件是否可以在当前进程内直接解析。"""
+        try:
+            self.parser_factory.get_parser(file_name)
+            return True
+        except UnsupportedFileTypeError:
+            return False
 
     async def _get_document_or_raise(self, document_id: int) -> KnowledgeDocumentModel:
         result = await self.session.execute(
@@ -251,3 +269,31 @@ class DocumentProcessService:
             .where(KnowledgeSegmentModel.skip_embedding == 0)
         )
         return int(result.scalar_one())
+
+    async def _load_converted_text(self, document: KnowledgeDocumentModel) -> str:
+        """加载可切分文本。
+
+        txt/md 直通解析会把文本放在 extension.parsed_text；
+        MinerU 解析后的 Markdown 则从 converted_doc_url 指向的对象存储读取。
+        """
+        extension = document.extension or {}
+        parsed_text = extension.get("parsed_text")
+        if isinstance(parsed_text, str) and parsed_text.strip():
+            return parsed_text
+
+        if self.file_storage is None or not document.converted_doc_url:
+            raise ValueError("文档缺少可切分文本")
+
+        # MinerU 转换后的 Markdown 保存在对象存储，切分时按 URL 反解并下载。
+        object_name = self.file_storage.extract_object_name(document.converted_doc_url)
+        content = await self.file_storage.download_bytes(object_name)
+
+        try:
+            text = content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError("转换后的文档不是 UTF-8 文本") from exc
+
+        if not text.strip():
+            raise ValueError("文档缺少可切分文本")
+
+        return text
