@@ -16,7 +16,7 @@ def build_rag_graph(
     common_chat_node: GraphNode,
     transform_node: GraphNode,
     router_node: GraphNode,
-    retrieve_node: GraphNode,
+    route_executor_node: GraphNode,
     reranker_node: GraphNode,
     grader_node: GraphNode,
     rewrite_node: GraphNode,
@@ -35,7 +35,7 @@ def build_rag_graph(
     builder.add_node("common_chat", common_chat_node)
     builder.add_node("transform", transform_node)
     builder.add_node("router", router_node)
-    builder.add_node("retrieve", retrieve_node)
+    builder.add_node("route_executor", route_executor_node)
     builder.add_node("reranker", reranker_node)
     builder.add_node("grader", grader_node)
     builder.add_node("reference", reference_node)
@@ -73,8 +73,8 @@ def build_rag_graph(
 
     builder.add_edge("common_chat", END)
     builder.add_edge("transform", "router")
-    builder.add_edge("router", "retrieve")
-    builder.add_edge("retrieve", "reranker")
+    builder.add_edge("router", "route_executor")
+    builder.add_edge("route_executor", "reranker")
     builder.add_edge("reranker", "grader")
     builder.add_edge("rewrite", "router")
     builder.add_edge("reference", "generator")

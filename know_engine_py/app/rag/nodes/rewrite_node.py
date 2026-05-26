@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from typing import Protocol
 
 from langchain_core.language_models import BaseChatModel
@@ -74,14 +73,9 @@ def create_rewrite_node(
         if not rewritten_query:
             rewritten_query = state.get("transformed_query") or state["query"]
 
-        enhanced_query = _build_enhanced_query(
-            rewritten_query=rewritten_query,
-            user_id=state["user_id"],
-        )
-
         return {
             **state,
-            "transformed_query": enhanced_query,
+            "transformed_query": rewritten_query,
             "retrieved_docs": [],
             "selected_docs": [],
             "rag_references": [],
@@ -112,12 +106,3 @@ def _build_user_message(state: AgentState) -> str:
         f"缺失信息点：\n{missing_aspects_text or '未提供'}\n\n"
         "请改写成一个更适合知识库检索的查询。只输出改写后的查询文本。"
     )
-
-
-def _build_enhanced_query(rewritten_query: str, user_id: str) -> str:
-    """构造给 retriever 使用的增强 query。
-
-    这里暂时复用 transform_node 的增强格式，确保二次检索仍带上用户和时间上下文。
-    后续可以抽成共享 helper，避免两边格式漂移。
-    """
-    return f"我的问题是：{rewritten_query}, 我的用户Id是: {user_id}, 现在是：{datetime.now()}"

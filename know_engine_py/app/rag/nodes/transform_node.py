@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
 from typing import Protocol
 
 from langchain_core.language_models import BaseChatModel
@@ -58,26 +57,13 @@ def create_transform_node(
             )
         )
 
-        rewritten_query = response.content.strip() or state["query"]
-        enhanced_query = _build_enhanced_query(
-            rewritten_query=rewritten_query,
-            user_id=state["user_id"],
-        )
+        rewritten_query = str(response.content).strip() or state["query"]
 
         return {
             **state,
-            "transformed_query": enhanced_query,
+            "transformed_query": rewritten_query,
             "progress_messages": progress_messages,
             "error": None,
         }
 
     return transform_node
-
-
-def _build_enhanced_query(rewritten_query: str, user_id: str) -> str:
-    """构造给检索器使用的增强查询。
-
-    保留 Java 版“我的问题是 + 用户 ID + 当前时间”的意图，
-    但先只作为字符串进入 retriever，不在这里写数据库。
-    """
-    return f"我的问题是：{rewritten_query}, 我的用户Id是: {user_id}, 现在是：{datetime.now()}"

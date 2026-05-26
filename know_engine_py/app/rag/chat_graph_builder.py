@@ -1,6 +1,7 @@
 from __future__ import annotations
-
+from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
+
 
 from know_engine_py.app.core.settings import Settings
 from know_engine_py.app.domains.automotive.precondition_resolvers import (
@@ -18,10 +19,8 @@ from know_engine_py.app.rag.nodes.grader_node import create_grader_node
 from know_engine_py.app.rag.nodes.intent_node import create_intent_node
 from know_engine_py.app.rag.nodes.reference_node import create_reference_node
 from know_engine_py.app.rag.nodes.reranker_node import create_reranker_node
-from know_engine_py.app.rag.nodes.retrieve_node import (
-    DocumentRetrieverProviderProtocol,
-    create_document_retrieve_node,
-)
+from know_engine_py.app.rag.nodes.retrieve_node import DocumentRetrieverProviderProtocol
+from know_engine_py.app.rag.nodes.route_executor_node import create_route_executor_node
 from know_engine_py.app.rag.nodes.rewrite_node import create_rewrite_node
 from know_engine_py.app.rag.nodes.router_node import create_router_node
 from know_engine_py.app.rag.nodes.transform_node import create_transform_node
@@ -32,6 +31,7 @@ from know_engine_py.app.rag.retrievers.document_retriever_provider import (
 )
 from know_engine_py.app.services.domain_config_service import DomainConfigService
 from know_engine_py.app.services.prompt_service import PromptService
+from know_engine_py.app.rag.retrievers.text_to_sql_provider import TextToSqlRetrieverProvider
 
 
 def build_chat_rag_graph(
@@ -39,6 +39,7 @@ def build_chat_rag_graph(
     domain_config_service: DomainConfigService,
     prompt_service: PromptService,
     resolver_registry: PreconditionResolverRegistry,
+    text_to_sql_retriever_provider: Any | None = None,
     document_retriever_provider: DocumentRetrieverProviderProtocol,
     fast_chat_model,
     chat_model,
@@ -51,7 +52,7 @@ def build_chat_rag_graph(
 
     这里注入的是 DocumentRetrieverProvider，而不是固定 retriever。
     原因是 router_node 会在运行时产出 route_strategy，
-    retrieve_node 需要根据 route_strategy 决定本轮使用 hybrid_document、vector 还是 keyword。
+    route_executor_node 根据 route_plan 分发到文档检索和 Text-to-SQL。
     """
     document_reranker = reranker or MetadataScoreReranker()
 
@@ -64,12 +65,14 @@ def build_chat_rag_graph(
         common_chat_node=create_common_chat_node(prompt_service, chat_model),
         transform_node=create_transform_node(prompt_service, fast_chat_model),
         router_node=create_router_node(domain_config_service),
-        retrieve_node=create_document_retrieve_node(document_retriever_provider),
+        route_executor_node=create_route_executor_node(
+            document_retriever_provider=document_retriever_provider,
+            text_to_sql_retriever_provider=text_to_sql_retriever_provider,
+        ),
         reranker_node=create_reranker_node(document_reranker),
         grader_node=create_grader_node(prompt_service, fast_chat_model),
         rewrite_node=create_rewrite_node(prompt_service, fast_chat_model),
-        # retrieval_source 交给每个 Document.metadata 判断，避免 keyword/vector 场景被硬写成 hybrid。
-        reference_node=create_reference_node(retrieval_source=None),
+        reference_node=create_reference_node(),
         generator_node=create_generator_node(prompt_service, chat_model),
     )
 
@@ -101,11 +104,19 @@ def build_chat_rag_graph_from_db(
         settings=settings,
     )
 
+    text_to_sql_provider = TextToSqlRetrieverProvider(
+        db=db,
+        chat_model=chat_model,
+        settings=settings,
+        document_retriever_provider=provider,
+    )
+
     return build_chat_rag_graph(
         domain_config_service=domain_config_service,
         prompt_service=prompt_service,
         resolver_registry=resolver_registry,
         document_retriever_provider=provider,
+        text_to_sql_retriever_provider=text_to_sql_provider,
         fast_chat_model=fast_chat_model,
         chat_model=chat_model,
         reranker=reranker,

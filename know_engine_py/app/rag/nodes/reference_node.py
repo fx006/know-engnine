@@ -9,10 +9,7 @@ from know_engine_py.app.rag.utils.reference import build_rag_references
 ReferenceNode = Callable[[AgentState], Awaitable[AgentState]]
 
 
-def create_reference_node(
-    *,
-    retrieval_source: str|None = "hybrid",
-) -> ReferenceNode:
+def create_reference_node() -> ReferenceNode:
     """创建引用抽取节点。
 
     这个节点只写入 state["rag_references"]，不直接拼 `[REFERENCE]` SSE 字符串。
@@ -23,7 +20,6 @@ def create_reference_node(
         documents = state.get("selected_docs") or state.get("retrieved_docs") or []
         references = build_rag_references(
             documents,
-            retrieval_source=retrieval_source,
             require_chunk_id=True,
             dedupe_by="chunkId",
         )
