@@ -1,0 +1,16 @@
+.env
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+
+.git
+.idea
+
+doc
+res
+new_features
+local_private
+
+Dockerfile
+docker-compose.yml

@@ -1,0 +1,100 @@
+services:
+  # FastAPI 后端应用。
+  # 默认只启动 api/worker，依赖的 MySQL/Redis/MinIO/ES 优先读取 .env 中的远程云服务器地址。
+  api:
+    build:
+      context: .
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    command:
+      - uv
+      - run
+      - --no-dev
+      - uvicorn
+      - know_engine_py.app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+
+  # Celery worker，负责文档转换、索引、补偿等异步任务。
+  # 生产/远程联调时需要在 .env 配置 CELERY_BROKER_URL / CELERY_RESULT_BACKEND。
+  worker:
+    build:
+      context: .
+    env_file:
+      - .env
+    command:
+      - uv
+      - run
+      - --no-dev
+      - celery
+      - -A
+      - know_engine_py.app.tasks.celery_app.celery_app
+      - worker
+      - -l
+      - info
+
+  # 以下中间件都属于本地可选 profile。
+  # 你当前已经在云服务器部署了 MySQL/Redis/MinIO/Elasticsearch，
+  # 所以平时不要启动 local-middleware，只让 api/worker 读取 .env 里的远程地址即可。
+  # 只有别人想在自己电脑完整起一套依赖时，才执行：
+  # docker compose --profile local-middleware up --build
+
+  # 本地 Redis：Celery broker/result backend 和后续缓存可用。
+  redis:
+    image: redis:7
+    profiles:
+      - local-middleware
+    ports:
+      - "6379:6379"
+
+  # 本地 MySQL：用于没有远程数据库时的完整本地演示。
+  mysql:
+    image: mysql:8.4
+    profiles:
+      - local-middleware
+    environment:
+      MYSQL_ROOT_PASSWORD: know_engine
+      MYSQL_DATABASE: know_engine
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  # 本地 MinIO：模拟 S3 对象存储，用于文档原文件和转换后 Markdown 存储。
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    profiles:
+      - local-middleware
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  # 本地 Elasticsearch：用于 BM25/关键词检索。
+  # 中文 IK 分词器没有在这里自动安装，Day16 会单独做真实检索质量验证。
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.3
+    profiles:
+      - local-middleware
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+volumes:
+  mysql_data:
+  minio_data:
+  es_data:
