@@ -5,7 +5,9 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from know_engine_py.app.api.dependencies.auth import get_optional_current_user
 from know_engine_py.app.db.session import get_db
+from know_engine_py.app.models.auth import UserModel
 from know_engine_py.app.models.document import KnowledgeSegmentModel
 from know_engine_py.app.models.enums import KnowledgeBaseType
 from know_engine_py.app.schemas.document import (
@@ -47,12 +49,16 @@ async def import_document(
     ),
     db: AsyncSession = Depends(get_db),
     file_storage: FileStorage = Depends(get_file_storage),
+    current_user: UserModel | None = Depends(get_optional_current_user),
 ):
     """导入文档：先保存原始文件，再按文件类型决定是否直通解析。"""
     service = DocumentProcessService(db)
     content = await file.read()
     file_name = file.filename or "unknown"
     object_name = _build_source_object_name(file_name)
+    resolved_upload_user = (
+        current_user.user_id if current_user is not None else upload_user
+    )
 
     try:
         # 先上传对象存储系统，持久化原始文件，后续 Celery worker 只能通过 doc_url 重新下载文件。
@@ -70,7 +76,7 @@ async def import_document(
                 file_name=file_name,
                 content=content,
                 doc_title=doc_title,
-                upload_user=upload_user,
+                upload_user=resolved_upload_user,
                 accessible_by=accessible_by,
                 description=description,
                 knowledge_base_type=knowledge_base_type,
@@ -81,7 +87,7 @@ async def import_document(
             document = await service.create_uploaded_document(
                 file_name=file_name,
                 doc_title=doc_title,
-                upload_user=upload_user,
+                upload_user=resolved_upload_user,
                 accessible_by=accessible_by,
                 description=description,
                 knowledge_base_type=knowledge_base_type,

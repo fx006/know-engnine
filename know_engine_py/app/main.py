@@ -7,9 +7,11 @@ from know_engine_py.app.api.admin_intent_router import router as admin_intent_ro
 from know_engine_py.app.api.admin_prompt_router import router as admin_prompt_router
 from know_engine_py.app.api.document_router import router as document_router
 from know_engine_py.app.api.chat_router import router as chat_router
+from know_engine_py.app.api.auth_router import router as auth_router
 
 app = FastAPI(title="know-engine-py")
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(admin_domain_router)
 app.include_router(admin_intent_router)
 app.include_router(admin_prompt_router)

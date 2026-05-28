@@ -13,7 +13,9 @@ from know_engine_py.app.api.chat_sse import (
     reference_event,
     token_event,
 )
+from know_engine_py.app.api.dependencies.auth import get_optional_current_user
 from know_engine_py.app.db.session import get_db
+from know_engine_py.app.models.auth import UserModel
 from know_engine_py.app.rag.chat_graph_builder import build_chat_rag_graph_from_db
 from know_engine_py.app.schemas.chat import (
     ChatConversationResponse,
@@ -38,6 +40,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 async def send_chat(
     request: ChatSendRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: UserModel | None = Depends(get_optional_current_user),
 ):
     """发送聊天消息，返回 SSE 流。
 
@@ -45,7 +48,10 @@ async def send_chat(
     这样可以避免 StreamingResponse 已经开始后再抛 HTTPException。
     token 级实时流式输出后续再接 graph.astream / astream_events。
     """
-    normalized_user_id = (request.user_id or "").strip()
+    normalized_user_id = _resolve_user_id(
+        request_user_id=request.user_id,
+        current_user=current_user,
+    )
     if not normalized_user_id:
         raise HTTPException(status_code=400, detail="userId 不能为空")
 
@@ -86,11 +92,15 @@ async def send_chat(
 
 @router.get("/list", response_model=list[ChatConversationResponse])
 async def list_conversations(
-    user_id: str = Query(..., alias="userId"),
+    user_id: str | None = Query(default=None, alias="userId"),
     db: AsyncSession = Depends(get_db),
+    current_user: UserModel | None = Depends(get_optional_current_user),
 ):
     """查询当前用户的会话列表。"""
-    normalized_user_id = (user_id or "").strip()
+    normalized_user_id = _resolve_user_id(
+        request_user_id=user_id,
+        current_user=current_user,
+    )
     if not normalized_user_id:
         raise HTTPException(status_code=400, detail="userId 不能为空")
 
@@ -102,6 +112,7 @@ async def list_conversations(
 async def list_messages(
     conversation_id: str = Query(..., alias="conversationId"),
     db: AsyncSession = Depends(get_db),
+    current_user: UserModel | None = Depends(get_optional_current_user),
 ):
     """查询指定会话下的全部消息。"""
     normalized_conversation_id = (conversation_id or "").strip()
@@ -114,6 +125,8 @@ async def list_messages(
     )
     if conversation is None:
         raise HTTPException(status_code=404, detail="会话不存在或已删除")
+    if current_user is not None and conversation.user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="不能访问其他用户的会话")
 
     message_service = ChatMessageService(db)
     return await message_service.get_messages_by_conversation_id(
@@ -125,6 +138,7 @@ async def list_messages(
 async def delete_conversation(
     conversation_id: str,
     db: AsyncSession = Depends(get_db),
+    current_user: UserModel | None = Depends(get_optional_current_user),
 ):
     """删除会话及其消息。"""
     normalized_conversation_id = (conversation_id or "").strip()
@@ -135,6 +149,14 @@ async def delete_conversation(
     message_service = ChatMessageService(db)
 
     try:
+        conversation = await conversation_service.get_by_conversation_id(
+            normalized_conversation_id
+        )
+        if conversation is None:
+            raise ValueError("会话不存在或已删除")
+        if current_user is not None and conversation.user_id != current_user.user_id:
+            raise HTTPException(status_code=403, detail="不能删除其他用户的会话")
+
         await message_service.delete_messages_by_conversation_id(
             normalized_conversation_id
         )
@@ -204,6 +226,24 @@ def _normalize_progress_message(message: object) -> str:
     if normalized.startswith("[PROGRESS]:"):
         return normalized.removeprefix("[PROGRESS]:").strip()
     return normalized
+
+
+def _resolve_user_id(
+    *,
+    request_user_id: str | None,
+    current_user: UserModel | None,
+) -> str:
+    """解析接口使用的 user_id。
+
+    登录态优先，旧参数兜底；这样能兼容旧调用方，又避免已登录用户伪造 userId。
+    """
+    if current_user is not None:
+        requested = (request_user_id or "").strip()
+        if requested and requested != current_user.user_id:
+            raise HTTPException(status_code=403, detail="不能操作其他用户的数据")
+        return current_user.user_id
+
+    return (request_user_id or "").strip()
 
 
 def _get_rag_graph(db: AsyncSession) -> RagGraph:

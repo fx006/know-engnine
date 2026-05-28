@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     database_echo: bool = False
     mysql_test_database_url: str = ""
 
+    jwt_secret_key: str = "change-me-to-a-32-byte-secret-key"
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
+    jwt_refresh_token_expire_days: int = 7
+
     redis_url: str = ""
 
     minio_endpoint: str = ""

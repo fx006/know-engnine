@@ -10,6 +10,7 @@ from know_engine_py.app.models.document import (
     KnowledgeSegmentModel,
     TableMetaModel,
 )
+from know_engine_py.app.models.auth import UserModel, RefreshTokenModel
 
 from know_engine_py.app.models.automotive import (
     CarInfoModel,
@@ -28,6 +29,8 @@ __all__=[
     "KnowledgeDocumentModel",
     "KnowledgeSegmentModel",
     "TableMetaModel",
+    "UserModel",
+    "RefreshTokenModel",
     "CarInfoModel",
     "MyCarModel",
     "CarOrderModel",
