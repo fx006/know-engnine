@@ -37,6 +37,10 @@ doc/
 tests/
 know_engine_py/tests/
 
+# Local smoke / demo verification scripts
+scripts/smoke/
+scripts/demo/
+
 # Logs / temporary files
 *.log
 tmp/
