@@ -9,7 +9,8 @@ from know_engine_py.app.api.dependencies.auth import get_optional_current_user
 from know_engine_py.app.db.session import get_db
 from know_engine_py.app.models.auth import UserModel
 from know_engine_py.app.models.document import KnowledgeSegmentModel
-from know_engine_py.app.models.enums import KnowledgeBaseType
+from know_engine_py.app.models.enums import FileObjectStatus, KnowledgeBaseType
+from know_engine_py.app.models.upload import FileObjectModel
 from know_engine_py.app.schemas.document import (
     DocumentResponse,
     DocumentSplitRequest,
@@ -18,9 +19,13 @@ from know_engine_py.app.schemas.document import (
     DocumentImportResponse,
 )
 from know_engine_py.app.services.document_process_service import DocumentProcessService
+from know_engine_py.app.services.access_control_service import AccessControlService
 from know_engine_py.app.storage.base import FileStorage
 from know_engine_py.app.storage.factory import create_file_storage
-from know_engine_py.app.tasks.document_tasks import enqueue_document_indexing,enqueue_document_conversion
+from know_engine_py.app.tasks.document_tasks import (
+    enqueue_document_conversion,
+    enqueue_document_indexing,
+)
 
 router = APIRouter(prefix="/documents", tags=["documents"])
 
@@ -38,10 +43,12 @@ def _build_source_object_name(file_name: str) -> str:
 
 @router.post("/import", response_model=DocumentImportResponse)
 async def import_document(
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
+    file_object_id: str | None = Form(default=None, alias="fileObjectId"),
     upload_user: str | None = Form(default=None, alias="uploadUser"),
     doc_title: str | None = Form(default=None, alias="docTitle"),
     accessible_by: str | None = Form(default=None, alias="accessibleBy"),
+    knowledge_base_id: str | None = Form(default=None, alias="knowledgeBaseId"),
     description: str | None = Form(default=None),
     knowledge_base_type: str = Form(
         default=KnowledgeBaseType.DOCUMENT_SEARCH.value,
@@ -51,47 +58,106 @@ async def import_document(
     file_storage: FileStorage = Depends(get_file_storage),
     current_user: UserModel | None = Depends(get_optional_current_user),
 ):
-    """导入文档：先保存原始文件，再按文件类型决定是否直通解析。"""
+    """导入文档。
+
+    支持两条入口：
+    1. quick import：小文件直接 multipart 上传。
+    2. resumable import：分片上传 complete 后，按 fileObjectId 导入知识库。
+    """
     service = DocumentProcessService(db)
-    content = await file.read()
-    file_name = file.filename or "unknown"
-    object_name = _build_source_object_name(file_name)
-    resolved_upload_user = (
-        current_user.user_id if current_user is not None else upload_user
-    )
 
     try:
-        # 先上传对象存储系统，持久化原始文件，后续 Celery worker 只能通过 doc_url 重新下载文件。
-        source_file_url = await file_storage.upload_bytes(
-            object_name=object_name,
-            content=content,
-            content_type=file.content_type or "application/octet-stream",
+        if current_user is None:
+            raise HTTPException(status_code=401, detail="请先登录后再上传文档")
+
+        normalized_knowledge_base_id = (knowledge_base_id or "").strip()
+        if not normalized_knowledge_base_id:
+            raise ValueError("knowledgeBaseId 不能为空")
+
+        access_service = AccessControlService(db)
+        knowledge_base = await access_service.get_knowledge_base(
+            normalized_knowledge_base_id
         )
+        if knowledge_base is None or knowledge_base.status != "active":
+            raise ValueError("知识库不存在")
+        if not await access_service.is_group_member(
+            group_id=knowledge_base.group_id,
+            user_id=current_user.user_id,
+        ):
+            raise ValueError("用户不是知识库所属群组成员")
+
+        group_id = knowledge_base.group_id
+        normalized_file_object_id = (file_object_id or "").strip()
+        if file is None and not normalized_file_object_id:
+            raise ValueError("file 和 fileObjectId 不能同时为空")
+        if file is not None and normalized_file_object_id:
+            raise ValueError("file 和 fileObjectId 不能同时传")
+
+        content: bytes | None = None
+        source_file_url: str
+        source_file_object_id: str | None = None
+
+        if normalized_file_object_id:
+            file_object = await _get_active_file_object(
+                db,
+                normalized_file_object_id,
+            )
+            file_name = file_object.file_name
+            source_file_url = file_object.file_url
+            source_file_object_id = file_object.file_object_id
+
+            if service.supports_direct_parse(file_name):
+                # FileObject 已经是完整文件，直通解析只需要从对象存储下载原始 bytes。
+                content = await file_storage.download_bytes(file_object.object_name)
+        else:
+            if file is None:
+                raise ValueError("file 和 fileObjectId 不能同时为空")
+
+            content = await file.read()
+            if not content:
+                raise ValueError("文件内容不能为空")
+
+            file_name = file.filename or "unknown"
+            object_name = _build_source_object_name(file_name)
+            # quick import 必须先保存原始文件；后续 worker 只能通过 doc_url 重新下载文件。
+            source_file_url = await file_storage.upload_bytes(
+                object_name=object_name,
+                content=content,
+                content_type=file.content_type or "application/octet-stream",
+            )
 
         needs_conversion = False
 
         if service.supports_direct_parse(file_name):
+            if content is None:
+                raise ValueError("可直接解析的文件缺少原始内容")
             # txt/md 可在 Web 进程内直接解析，导入后立即进入 CONVERTED。
             document = await service.import_document(
                 file_name=file_name,
                 content=content,
                 doc_title=doc_title,
-                upload_user=resolved_upload_user,
+                upload_user=current_user.user_id,
                 accessible_by=accessible_by,
                 description=description,
                 knowledge_base_type=knowledge_base_type,
+                group_id=group_id,
+                knowledge_base_id=normalized_knowledge_base_id,
                 source_file_url=source_file_url,
+                file_object_id=source_file_object_id,
             )
         else:
             # PDF/Word 等慢解析文件只建 UPLOADED 记录，commit 后再投递 MinerU 转换任务。
             document = await service.create_uploaded_document(
                 file_name=file_name,
                 doc_title=doc_title,
-                upload_user=resolved_upload_user,
+                upload_user=current_user.user_id,
                 accessible_by=accessible_by,
                 description=description,
                 knowledge_base_type=knowledge_base_type,
+                group_id=group_id,
+                knowledge_base_id=normalized_knowledge_base_id,
                 source_file_url=source_file_url,
+                file_object_id=source_file_object_id,
             )
             needs_conversion = True
 
@@ -120,6 +186,28 @@ async def import_document(
     except ValueError as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _get_active_file_object(
+    db: AsyncSession,
+    file_object_id: str,
+) -> FileObjectModel:
+    """读取已完成上传的文件对象。
+
+    文件对象只代表“物理文件已存在”，真正的知识库访问权限仍由 import 时的
+    knowledgeBaseId 校验决定；这样既保留秒传复用，也不绕过知识库权限。
+    """
+    result = await db.execute(
+        select(FileObjectModel).where(
+            FileObjectModel.file_object_id == file_object_id
+        )
+    )
+    file_object = result.scalar_one_or_none()
+    if file_object is None:
+        raise ValueError("文件对象不存在")
+    if file_object.status != FileObjectStatus.ACTIVE.value:
+        raise ValueError("文件对象不可用")
+    return file_object
 
 
 @router.post("/{document_id}/split",response_model=DocumentSplitResponse)

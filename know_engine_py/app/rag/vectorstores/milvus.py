@@ -5,9 +5,34 @@ from typing import Type
 from langchain_core.embeddings import Embeddings
 from langchain_core.vectorstores import VectorStore
 from langchain_milvus import Milvus
+from pymilvus import connections
 
 from know_engine_py.app.core.settings import Settings, get_settings
 from know_engine_py.app.rag.embeddings.factory import EmbeddingFactory
+
+
+class KnowEngineMilvus(Milvus):
+    """项目 Milvus 适配器。
+
+    langchain-milvus 0.3.x 在 PyMilvus 2.6.x 下会同时使用 MilvusClient
+    和旧 ORM Collection；旧 ORM 访问已有 collection 前需要显式注册 alias。
+    这里集中做兼容，业务层仍然面向 LangChain VectorStore。
+    """
+
+    def _init(self, *args, **kwargs):
+        self._ensure_orm_connection()
+        return super()._init(*args, **kwargs)
+
+    def _ensure_orm_connection(self) -> None:
+        alias = getattr(self, "alias", None)
+        if not alias:
+            return
+
+        current_connections = dict(connections.list_connections())
+        if current_connections.get(alias) is not None:
+            return
+
+        connections.connect(alias=alias, **self._connection_args)
 
 
 class MilvusVectorStoreFactory:
@@ -21,7 +46,7 @@ class MilvusVectorStoreFactory:
         self,
         settings: Settings | None = None,
         embeddings: Embeddings | None = None,
-        milvus_cls: Type[Milvus] = Milvus,
+        milvus_cls: Type[Milvus] = KnowEngineMilvus,
     ):
         self.settings = settings or get_settings()
         self.embeddings = embeddings or EmbeddingFactory(settings=self.settings).create()

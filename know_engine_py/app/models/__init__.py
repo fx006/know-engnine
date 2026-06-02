@@ -10,7 +10,21 @@ from know_engine_py.app.models.document import (
     KnowledgeSegmentModel,
     TableMetaModel,
 )
+from know_engine_py.app.models.document_task import (
+    DocumentTaskModel,
+    TaskAttemptModel,
+)
 from know_engine_py.app.models.auth import UserModel, RefreshTokenModel
+from know_engine_py.app.models.access_control import (
+    GroupModel,
+    GroupMemberModel,
+    KnowledgeBaseModel,
+)
+from know_engine_py.app.models.upload import (
+    FileObjectModel,
+    UploadChunkModel,
+    UploadSessionModel,
+)
 
 from know_engine_py.app.models.automotive import (
     CarInfoModel,
@@ -29,8 +43,16 @@ __all__=[
     "KnowledgeDocumentModel",
     "KnowledgeSegmentModel",
     "TableMetaModel",
+    "DocumentTaskModel",
+    "TaskAttemptModel",
     "UserModel",
     "RefreshTokenModel",
+    "GroupModel",
+    "GroupMemberModel",
+    "KnowledgeBaseModel",
+    "FileObjectModel",
+    "UploadChunkModel",
+    "UploadSessionModel",
     "CarInfoModel",
     "MyCarModel",
     "CarOrderModel",

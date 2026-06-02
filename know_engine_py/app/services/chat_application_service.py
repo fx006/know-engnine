@@ -59,6 +59,8 @@ class ChatApplicationService:
         user_id: str,
         query: str,
         conversation_id: str | None = None,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
     ) -> ChatRunResult:
         """执行一次完整聊天。
 
@@ -70,6 +72,8 @@ class ChatApplicationService:
             user_id=user_id,
             conversation_id=conversation_id,
             first_message=normalized_query,
+            group_id=group_id,
+            knowledge_base_id=knowledge_base_id,
         )
 
         user_message = await self.message_service.save_user_message(
@@ -90,6 +94,8 @@ class ChatApplicationService:
             query=normalized_query,
             user_id=user_id,
             domain_id=self.domain_id,
+            group_id=conversation.group_id,
+            knowledge_base_id=conversation.knowledge_base_id,
             conversation_id=conversation.conversation_id,
             message_id=user_message.message_id,
             assistant_message_id=assistant_message.message_id,

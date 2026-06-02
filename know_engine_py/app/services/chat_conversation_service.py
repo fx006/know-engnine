@@ -28,15 +28,22 @@ class ChatConversationService:
         self,
         *,
         user_id: str,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
         title: str | None = None,
     ) -> ChatConversationModel:
         """创建新会话，并返回会话模型。"""
         if not user_id or not user_id.strip():
             raise ValueError("user_id 不能为空")
 
+        normalized_group_id = self._normalize_optional(group_id)
+        normalized_knowledge_base_id = self._normalize_optional(knowledge_base_id)
+
         conversation = ChatConversationModel(
             conversation_id=uuid4().hex,
             user_id=user_id.strip(),
+            group_id=normalized_group_id,
+            knowledge_base_id=normalized_knowledge_base_id,
             title=self.title_service.normalize_title(title),
             status=ChatConversationStatus.ACTIVE.value,
         )
@@ -50,6 +57,8 @@ class ChatConversationService:
         user_id: str,
         conversation_id: str | None,
         first_message: str,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
     ) -> ChatConversationModel:
         """确保本轮聊天有可用会话。
 
@@ -59,6 +68,8 @@ class ChatConversationService:
         if not conversation_id or not conversation_id.strip():
             return await self.create_conversation(
                 user_id=user_id,
+                group_id=group_id,
+                knowledge_base_id=knowledge_base_id,
                 title=self.title_service.build_temporary_title(first_message),
             )
 
@@ -68,6 +79,29 @@ class ChatConversationService:
 
         if conversation.user_id != user_id:
             raise ValueError("会话不属于当前用户")
+
+        normalized_group_id = self._normalize_optional(group_id)
+        normalized_knowledge_base_id = self._normalize_optional(knowledge_base_id)
+        self._assert_conversation_scope_match(
+            conversation=conversation,
+            group_id=normalized_group_id,
+            knowledge_base_id=normalized_knowledge_base_id,
+        )
+
+        if conversation.group_id is None and normalized_group_id is not None:
+            conversation.group_id = normalized_group_id
+
+        if (
+            conversation.knowledge_base_id is None
+            and normalized_knowledge_base_id is not None
+        ):
+            conversation.knowledge_base_id = normalized_knowledge_base_id
+
+        if (
+            conversation.group_id is not None
+            or conversation.knowledge_base_id is not None
+        ):
+            await self.session.flush()
 
         return conversation
 
@@ -136,3 +170,25 @@ class ChatConversationService:
         if conversation is None:
             raise ValueError("会话不存在或已删除")
         return conversation
+
+    @staticmethod
+    def _normalize_optional(value: str | None) -> str | None:
+        normalized = (value or "").strip()
+        return normalized or None
+
+    @staticmethod
+    def _assert_conversation_scope_match(
+        *,
+        conversation: ChatConversationModel,
+        group_id: str | None,
+        knowledge_base_id: str | None,
+    ) -> None:
+        if conversation.group_id and group_id and conversation.group_id != group_id:
+            raise ValueError("会话已绑定其他群组")
+
+        if (
+            conversation.knowledge_base_id
+            and knowledge_base_id
+            and conversation.knowledge_base_id != knowledge_base_id
+        ):
+            raise ValueError("会话已绑定其他知识库")

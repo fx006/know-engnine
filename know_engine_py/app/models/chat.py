@@ -10,6 +10,8 @@ class ChatConversationModel(Base, BaseEntity):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     conversation_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
     user_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    group_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    knowledge_base_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(
         String(32),

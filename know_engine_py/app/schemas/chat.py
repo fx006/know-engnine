@@ -14,6 +14,7 @@ class ChatSendRequest(BaseModel):
     user_id: str | None = Field(default=None, alias="userId")
     content: str
     conversation_id: str | None = Field(default=None, alias="conversationId")
+    knowledge_base_id: str | None = Field(default=None, alias="knowledgeBaseId")
 
 
 
@@ -24,6 +25,8 @@ class ChatConversationResponse(BaseModel):
 
     conversation_id: str
     user_id: str
+    group_id: str | None = None
+    knowledge_base_id: str | None = None
     title: str | None = None
     status: str
     created_at: datetime

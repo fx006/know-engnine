@@ -16,6 +16,8 @@ class AgentState(TypedDict, total=False):
     query: str
     user_id: str
     domain_id: str
+    group_id: str | None
+    knowledge_base_id: str | None
 
     conversation_id: str | None
     message_id: str | None
@@ -31,6 +33,8 @@ class AgentState(TypedDict, total=False):
     transformed_query: str | None
     route_strategy: str | None
     route_plan: list[dict[str, Any]]
+    route_planner_source: str | None
+    route_planner_error: str | None
 
     retrieved_docs: list[Document]
     selected_docs: list[Document]
@@ -54,6 +58,8 @@ def build_initial_state(
     user_id: str,
     *,
     domain_id: str = "automotive",
+    group_id: str | None = None,
+    knowledge_base_id: str | None = None,
     conversation_id: str | None = None,
     message_id: str | None = None,
     assistant_message_id: str | None = None,
@@ -65,6 +71,8 @@ def build_initial_state(
         "query": query,
         "user_id": user_id,
         "domain_id": domain_id,
+        "group_id": group_id,
+        "knowledge_base_id": knowledge_base_id,
         "conversation_id": conversation_id,
         "message_id": message_id,
         "assistant_message_id": assistant_message_id,
@@ -76,6 +84,8 @@ def build_initial_state(
         "transformed_query": None,
         "route_strategy": None,
         "route_plan": [],
+        "route_planner_source": None,
+        "route_planner_error": None,
         "retrieved_docs": [],
         "selected_docs": [],
         "grade_result": None,

@@ -5,6 +5,7 @@ from typing import Any
 
 from langchain_core.documents import Document
 
+from know_engine_py.app.rag.retrievers.scope import RetrievalScope, build_retrieval_scope
 from know_engine_py.app.rag.state import AgentState
 
 RouteExecutorNode = Callable[[AgentState], Awaitable[AgentState]]
@@ -43,6 +44,7 @@ def create_route_executor_node(
                         provider=document_retriever_provider,
                         route=route,
                         query=query,
+                        scope=build_retrieval_scope(state),
                     )
                 elif route in _TEXT_TO_SQL_ROUTES:
                     route_documents = await _execute_text_to_sql_route(
@@ -134,11 +136,12 @@ async def _execute_document_route(
     provider: Any,
     route: str,
     query: str,
+    scope: RetrievalScope | None = None,
 ) -> list[Document]:
     if not callable(getattr(provider, "create", None)):
         raise ValueError("document_retriever_provider 必须提供 create() 方法")
 
-    retriever = provider.create(strategy=route)
+    retriever = provider.create(strategy=route, scope=scope)
     return await retriever.ainvoke(query)
 
 async def _execute_text_to_sql_route(
@@ -160,6 +163,8 @@ async def _execute_text_to_sql_route(
     retriever = provider.create(
         user_id=state.get("user_id"),
         entities=_compact_entities(raw_entities),
+        group_id=state.get("group_id"),
+        knowledge_base_id=state.get("knowledge_base_id"),
     )
     return await retriever.ainvoke(query)
 

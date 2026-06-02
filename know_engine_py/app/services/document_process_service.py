@@ -50,7 +50,10 @@ class DocumentProcessService:
         accessible_by: str | None = None,
         description: str | None = None,
         knowledge_base_type: str = KnowledgeBaseType.DOCUMENT_SEARCH.value,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
         source_file_url: str | None = None,
+        file_object_id: str | None = None,
     ) -> KnowledgeDocumentModel:
         """导入可直接解析的文本类文件：创建记录 → 解析，返回 CONVERTED 状态文档。"""
         # 这里的“上传”是创建 DB 记录；物理文件上传已由 FileStorage 完成。
@@ -61,7 +64,10 @@ class DocumentProcessService:
             accessible_by=accessible_by,
             description=description,
             knowledge_base_type=knowledge_base_type,
+            group_id=group_id,
+            knowledge_base_id=knowledge_base_id,
             source_file_url=source_file_url,
+            file_object_id=file_object_id,
         )
         return await self.convert_document(
             document.doc_id,
@@ -105,6 +111,10 @@ class DocumentProcessService:
         }
         if document.accessible_by:
             base_metadata["accessibleBy"] = document.accessible_by
+        if document.group_id:
+            base_metadata["groupId"] = document.group_id
+        if document.knowledge_base_id:
+            base_metadata["knowledgeBaseId"] = document.knowledge_base_id
 
         split_result = splitter.split(parsed_text, base_metadata=base_metadata)
 
@@ -152,7 +162,10 @@ class DocumentProcessService:
         accessible_by: str | None = None,
         description: str | None = None,
         knowledge_base_type: str = KnowledgeBaseType.DOCUMENT_SEARCH.value,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
         source_file_url: str | None = None,
+        file_object_id: str | None = None,
     ) -> KnowledgeDocumentModel:
         """创建文档记录并置为 UPLOADED，不做内容解析。
 
@@ -165,6 +178,13 @@ class DocumentProcessService:
         safe_name = Path(file_name).name
         title = doc_title or safe_name
         doc_url = source_file_url or f"local://source/{safe_name}"
+        normalized_file_object_id = (file_object_id or "").strip() or None
+        extension = {
+            "source_file_name": safe_name,
+        }
+        if normalized_file_object_id:
+            extension["file_object_id"] = normalized_file_object_id
+
         document = KnowledgeDocumentModel(
             doc_title=title,
             upload_user=upload_user,
@@ -174,9 +194,10 @@ class DocumentProcessService:
             accessible_by=accessible_by,
             description=description,
             knowledge_base_type=knowledge_base_type,
-            extension={
-                "source_file_name": safe_name,
-            },
+            group_id=group_id,
+            knowledge_base_id=knowledge_base_id,
+            file_object_id=normalized_file_object_id,
+            extension=extension,
         )
         self.session.add(document)
         await self.session.flush()

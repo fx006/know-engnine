@@ -32,6 +32,7 @@ from know_engine_py.app.services.chat_conversation_service import (
 )
 from know_engine_py.app.services.chat_memory_service import ChatMemoryService
 from know_engine_py.app.services.chat_message_service import ChatMessageService
+from know_engine_py.app.services.access_control_service import AccessControlService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -60,6 +61,12 @@ async def send_chat(
         raise HTTPException(status_code=400, detail="消息内容不能为空")
 
     graph = _get_rag_graph(db)
+    access_control_service = AccessControlService(db)
+    group_id, knowledge_base_id = await _resolve_conversation_scope(
+        request=request,
+        current_user=current_user,
+        access_control_service=access_control_service,
+    )
     service = _build_chat_application_service(db, graph)
 
     try:
@@ -67,6 +74,8 @@ async def send_chat(
             user_id=normalized_user_id,
             query=normalized_content,
             conversation_id=request.conversation_id,
+            group_id=group_id,
+            knowledge_base_id=knowledge_base_id,
         )
         await db.commit()
     except ValueError as exc:
@@ -187,6 +196,30 @@ def _build_chat_application_service(
         memory_service=memory_service,
         graph=graph,
     )
+
+
+async def _resolve_conversation_scope(
+    *,
+    request: ChatSendRequest,
+    current_user: UserModel | None,
+    access_control_service: AccessControlService,
+) -> tuple[str | None, str | None]:
+    """把请求里的 knowledgeBaseId 解析成会话级群组/知识库范围。"""
+    knowledge_base_id = (request.knowledge_base_id or "").strip() or None
+    if not knowledge_base_id:
+        return None, None
+
+    knowledge_base = await access_control_service.get_knowledge_base(knowledge_base_id)
+    if knowledge_base is None or knowledge_base.status != "active":
+        raise HTTPException(status_code=404, detail="知识库不存在或已失效")
+
+    if current_user is not None and not await access_control_service.is_group_member(
+        group_id=knowledge_base.group_id,
+        user_id=current_user.user_id,
+    ):
+        raise HTTPException(status_code=403, detail="当前用户无权使用该知识库")
+
+    return knowledge_base.group_id, knowledge_base.knowledge_base_id
 
 
 def _result_to_sse_frames(result: ChatRunResult) -> list[str]:

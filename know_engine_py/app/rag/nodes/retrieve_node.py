@@ -5,6 +5,7 @@ from typing import Protocol
 
 from langchain_core.documents import Document
 
+from know_engine_py.app.rag.retrievers.scope import build_retrieval_scope
 from know_engine_py.app.rag.state import AgentState
 
 
@@ -22,7 +23,11 @@ class DocumentRetrieverProviderProtocol(Protocol):
     只根据 route_strategy 向 provider 要一个对应的文档检索器。
     """
 
-    def create(self, strategy: str = "auto") -> AsyncRetriever:
+    def create(
+        self,
+        strategy: str = "auto",
+        scope: RetrievalScope | None = None,
+    ) -> AsyncRetriever:
         ...
 
 
@@ -93,7 +98,10 @@ def create_document_retrieve_node(
         query = _resolve_retrieval_query(state, strategy=strategy)
 
         try:
-            retriever = provider.create(strategy=strategy)
+            retriever = provider.create(
+                strategy=strategy,
+                scope=build_retrieval_scope(state),
+            )
             documents = await retriever.ainvoke(query)
         except Exception as exc:
             return _failed_state(

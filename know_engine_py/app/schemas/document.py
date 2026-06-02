@@ -17,6 +17,9 @@ class DocumentResponse(BaseModel):
     accessible_by: str | None = None
     description: str | None = None
     knowledge_base_type: str | None = None
+    group_id: str | None = None
+    knowledge_base_id: str | None = None
+    file_object_id: str | None = None
     extension: dict | None = None
 
 

@@ -43,6 +43,7 @@ def build_chat_rag_graph(
     document_retriever_provider: DocumentRetrieverProviderProtocol,
     fast_chat_model,
     chat_model,
+    query_router_model=None,
     reranker: DocumentReranker | None = None,
 ):
     """组装聊天问答使用的 LangGraph。
@@ -64,7 +65,10 @@ def build_chat_rag_graph(
         ),
         common_chat_node=create_common_chat_node(prompt_service, chat_model),
         transform_node=create_transform_node(prompt_service, fast_chat_model),
-        router_node=create_router_node(domain_config_service),
+        router_node=create_router_node(
+            domain_config_service,
+            query_router_model=query_router_model,
+        ),
         route_executor_node=create_route_executor_node(
             document_retriever_provider=document_retriever_provider,
             text_to_sql_retriever_provider=text_to_sql_retriever_provider,
@@ -119,5 +123,6 @@ def build_chat_rag_graph_from_db(
         text_to_sql_retriever_provider=text_to_sql_provider,
         fast_chat_model=fast_chat_model,
         chat_model=chat_model,
+        query_router_model=fast_chat_model,
         reranker=reranker,
     )

@@ -17,6 +17,11 @@ class KnowledgeDocumentModel(Base, BaseEntity):
         Index("idx_knowledge_document_status_doc_id", "status", "doc_id"),
         # 便于按创建时间倒序查看最新上传文档。
         Index("idx_knowledge_document_created_at", "created_at"),
+        # 权限过滤入口：按企业空间和知识库筛选文档。
+        Index("idx_knowledge_document_group_id", "group_id"),
+        Index("idx_knowledge_document_knowledge_base_id", "knowledge_base_id"),
+        # 追溯文档来自哪个上传完成后的文件对象，便于秒传复用和后台排障。
+        Index("idx_knowledge_document_file_object_id", "file_object_id"),
     )
 
     # 文档主键，对应业务里的 documentId / docId。
@@ -39,6 +44,12 @@ class KnowledgeDocumentModel(Base, BaseEntity):
     description: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # 知识库类型（如通用知识库、数据问答知识库等）。
     knowledge_base_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # 企业空间 ID，后续用于检索权限过滤。
+    group_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 知识库 ID，文档和 segment 的权限归属单元。
+    knowledge_base_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # 来源文件对象 ID；quick import 为空，分片上传完成后再导入时有值。
+    file_object_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Java 版 extension 是 JSON 字符串；Python 版直接用 dict，业务层不用反复手动解析。
     # 预留扩展字段：可放来源系统、标签、处理参数快照等。
     extension: Mapped[dict | None] = mapped_column(JSON, nullable=True)

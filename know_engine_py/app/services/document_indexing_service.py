@@ -57,7 +57,11 @@ class DocumentIndexingService:
                 for segment in segments
             ]
 
-            embedding_ids = await self.vector_store.aadd_documents(documents)
+            # Milvus auto_id=False 时必须显式传主键；这里用业务 chunk_id，方便后续溯源和幂等排查。
+            embedding_ids = await self.vector_store.aadd_documents(
+                documents,
+                ids=[segment.chunk_id for segment in segments],
+            )
 
             if len(embedding_ids) != len(segments):
                 raise ValueError("向量库返回的 embedding_id 数量与分段数量不一致")

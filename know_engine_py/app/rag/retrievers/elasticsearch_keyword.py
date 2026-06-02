@@ -10,7 +10,12 @@ from langchain_elasticsearch import AsyncElasticsearchRetriever
 from know_engine_py.app.core.settings import Settings, get_settings
 
 
-def build_keyword_query(query: str, *, top_k: int = 5) -> dict[str, Any]:
+def build_keyword_query(
+    query: str,
+    *,
+    top_k: int = 5,
+    metadata_filter: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """构造 Elasticsearch BM25 关键词检索请求体。"""
     normalized_query = query.strip()
     if not normalized_query:
@@ -18,17 +23,31 @@ def build_keyword_query(query: str, *, top_k: int = 5) -> dict[str, Any]:
     if top_k <= 0:
         raise ValueError("top_k 必须大于 0")
 
+    keyword_query = {
+        "multi_match": {
+            "query": normalized_query,
+            "fields": [
+                "text^3",
+                "metadata.headingPath^2",
+                "metadata.keywords^2",
+                "metadata.fileName",
+            ],
+            "type": "best_fields",
+        }
+    }
+
+    filters = _build_metadata_filters(metadata_filter or {})
+    if not filters:
+        return {
+            "query": keyword_query,
+            "size": top_k,
+        }
+
     return {
         "query": {
-            "multi_match": {
-                "query": normalized_query,
-                "fields": [
-                    "text^3",
-                    "metadata.headingPath^2",
-                    "metadata.keywords^2",
-                    "metadata.fileName",
-                ],
-                "type": "best_fields",
+            "bool": {
+                "must": [keyword_query],
+                "filter": filters,
             }
         },
         "size": top_k,
@@ -58,10 +77,12 @@ class ElasticsearchKeywordRetrieverFactory:
         settings: Settings | None = None,
         retriever_cls: Callable[..., BaseRetriever] = AsyncElasticsearchRetriever,
         top_k: int = 5,
+        metadata_filter: dict[str, Any] | None = None,
     ):
         self.settings = settings or get_settings()
         self.retriever_cls = retriever_cls
         self.top_k = top_k
+        self.metadata_filter = metadata_filter or {}
 
     def create(self) -> BaseRetriever:
         """根据项目配置创建 Elasticsearch 关键词检索器。"""
@@ -75,8 +96,28 @@ class ElasticsearchKeywordRetrieverFactory:
         )
 
     def _build_body(self, query: str) -> dict[str, Any]:
-        return build_keyword_query(query, top_k=self.top_k)
+        return build_keyword_query(
+            query,
+            top_k=self.top_k,
+            metadata_filter=self.metadata_filter,
+        )
 
     def _validate_settings(self) -> None:
         if not self.settings.elasticsearch_url.strip():
             raise ValueError("ELASTICSEARCH_URL 不能为空")
+
+
+def _build_metadata_filters(metadata_filter: dict[str, Any]) -> list[dict[str, Any]]:
+    """把平台 metadata 过滤条件翻译成 Elasticsearch bool filter。
+
+    ES 索引里 metadata 是对象字段；权限字段是精确值匹配，走 keyword 子字段。
+    """
+    filters: list[dict[str, Any]] = []
+
+    for key, value in metadata_filter.items():
+        if value in (None, ""):
+            continue
+
+        filters.append({"term": {f"metadata.{key}.keyword": str(value)}})
+
+    return filters

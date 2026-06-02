@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Type
+from typing import Any, Literal, Type
 
 from langchain_core.callbacks.manager import (
     AsyncCallbackManagerForRetrieverRun,
@@ -17,6 +17,7 @@ from know_engine_py.app.rag.retrievers.elasticsearch_keyword import (
 from know_engine_py.app.rag.retrievers.hybrid import HybridRetriever
 from know_engine_py.app.rag.retrievers.milvus import MilvusRetrieverFactory
 from know_engine_py.app.rag.vectorstores.milvus import MilvusVectorStoreFactory
+from know_engine_py.app.rag.retrievers.scope import RetrievalScope
 
 DocumentRetrievalStrategy = Literal["auto", "hybrid_document", "vector", "keyword"]
 
@@ -79,33 +80,42 @@ class DocumentRetrieverProvider:
     def create(
         self,
         strategy: DocumentRetrievalStrategy | str = "auto",
+        scope: RetrievalScope | None = None,
     ) -> BaseRetriever:
         """按指定文档检索策略创建检索器。
 
         settings 表达“当前环境有哪些检索能力可用”；
         strategy 表达“本次查询想使用哪个文档检索能力”。
+        scope 表达“本次查询允许访问哪个知识空间”。
         """
         normalized_strategy = self._normalize_strategy(strategy)
+        metadata_filter = self._scope_to_metadata_filter(scope)
 
         if normalized_strategy == "auto":
-            return self._create_auto_retriever()
+            return self._create_auto_retriever(metadata_filter=metadata_filter)
 
         if normalized_strategy == "hybrid_document":
-            return self._create_hybrid_document_retriever()
+            return self._create_hybrid_document_retriever(
+                metadata_filter=metadata_filter
+            )
 
         if normalized_strategy == "vector":
             if not self._milvus_enabled():
                 return self._unavailable("文档向量检索不可用：MILVUS_URI 未配置")
-            return self._create_milvus_retriever()
+            return self._create_milvus_retriever(metadata_filter=metadata_filter)
 
         if normalized_strategy == "keyword":
             if not self._elasticsearch_enabled():
                 return self._unavailable("文档关键词检索不可用：ELASTICSEARCH_URL 未配置")
-            return self._create_keyword_retriever()
+            return self._create_keyword_retriever(metadata_filter=metadata_filter)
 
         raise ValueError(f"不支持的文档检索策略：{strategy}")
 
-    def _create_auto_retriever(self) -> BaseRetriever:
+    def _create_auto_retriever(
+        self,
+        *,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> BaseRetriever:
         """根据环境自动选择默认文档检索器。
 
         auto 是环境兜底策略；业务路由明确时应传入 hybrid_document/vector/keyword。
@@ -114,11 +124,15 @@ class DocumentRetrieverProvider:
         source_names: list[str] = []
 
         if self._milvus_enabled():
-            retrievers.append(self._create_milvus_retriever())
+            retrievers.append(
+                self._create_milvus_retriever(metadata_filter=metadata_filter)
+            )
             source_names.append("vector")
 
         if self._elasticsearch_enabled():
-            retrievers.append(self._create_keyword_retriever())
+            retrievers.append(
+                self._create_keyword_retriever(metadata_filter=metadata_filter)
+            )
             source_names.append("keyword")
 
         if not retrievers:
@@ -136,7 +150,11 @@ class DocumentRetrieverProvider:
             top_k=self.top_k,
         )
 
-    def _create_hybrid_document_retriever(self) -> BaseRetriever:
+    def _create_hybrid_document_retriever(
+        self,
+        *,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> BaseRetriever:
         """创建明确的文档混合检索器，要求 Milvus 和 ES 都可用。"""
         missing_settings: list[str] = []
         if not self._milvus_enabled():
@@ -152,18 +170,23 @@ class DocumentRetrieverProvider:
 
         return self.hybrid_retriever_cls(
             retrievers=[
-                self._create_milvus_retriever(),
-                self._create_keyword_retriever(),
+                self._create_milvus_retriever(metadata_filter=metadata_filter),
+                self._create_keyword_retriever(metadata_filter=metadata_filter),
             ],
             source_names=["vector", "keyword"],
             top_k=self.top_k,
         )
 
-    def _create_milvus_retriever(self) -> BaseRetriever:
+    def _create_milvus_retriever(
+        self,
+        *,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> BaseRetriever:
         vector_store = self._create_milvus_vector_store()
         return self.milvus_retriever_factory_cls(
             vector_store=vector_store,
             top_k=self.top_k,
+            metadata_filter=metadata_filter,
         ).create()
 
     def _create_milvus_vector_store(self) -> VectorStore:
@@ -171,10 +194,15 @@ class DocumentRetrieverProvider:
             settings=self.settings,
         ).create()
 
-    def _create_keyword_retriever(self) -> BaseRetriever:
+    def _create_keyword_retriever(
+        self,
+        *,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> BaseRetriever:
         return self.keyword_retriever_factory_cls(
             settings=self.settings,
             top_k=self.top_k,
+            metadata_filter=metadata_filter,
         ).create()
 
     def _milvus_enabled(self) -> bool:
@@ -201,3 +229,12 @@ class DocumentRetrieverProvider:
         if normalized is None:
             raise ValueError(f"不支持的文档检索策略：{strategy}")
         return normalized
+
+    def _scope_to_metadata_filter(
+        self,
+        scope: RetrievalScope | None,
+    ) -> dict[str, str]:
+        if scope is None:
+            return {}
+
+        return scope.to_metadata_filter()

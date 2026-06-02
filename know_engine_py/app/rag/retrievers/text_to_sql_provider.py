@@ -8,6 +8,7 @@ from know_engine_py.app.core.settings import Settings, get_settings
 from know_engine_py.app.rag.sql.executor import ReadOnlySqlExecutor
 from know_engine_py.app.rag.sql.formatter import SqlResultFormatter
 from know_engine_py.app.rag.sql.query_planner import TextToSqlPlanner
+from know_engine_py.app.rag.retrievers.scope import RetrievalScope
 from know_engine_py.app.rag.retrievers.text_to_sql import TextToSqlRetriever
 from know_engine_py.app.services.table_meta_service import TableMetaService
 
@@ -39,6 +40,8 @@ class TextToSqlRetrieverProvider:
         *,
         user_id: str | None = None,
         entities: dict[str, Any] | None = None,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
     ) -> TextToSqlRetriever:
         """按当前请求上下文创建 Text-to-SQL retriever。"""
         table_meta_service = TableMetaService(self.db)
@@ -58,17 +61,45 @@ class TextToSqlRetrieverProvider:
             planner=planner,
             executor=executor,
             formatter=formatter,
-            fallback_retriever=self._create_fallback_retriever(),
+            fallback_retriever=self._create_fallback_retriever(
+                group_id=group_id,
+                knowledge_base_id=knowledge_base_id,
+            ),
             user_id=user_id,
             entities=entities,
         )
 
-    def _create_fallback_retriever(self):
+    def _create_fallback_retriever(
+        self,
+        *,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
+    ):
         if self.document_retriever_provider is None:
             return None
 
         # SQL 空结果或失败时，优先降级到当前环境可用的文档检索能力。
-        return self.document_retriever_provider.create(strategy="auto")
+        return self.document_retriever_provider.create(
+            strategy="auto",
+            scope=self._build_retrieval_scope(
+                group_id=group_id,
+                knowledge_base_id=knowledge_base_id,
+            ),
+        )
+
+    def _build_retrieval_scope(
+        self,
+        *,
+        group_id: str | None = None,
+        knowledge_base_id: str | None = None,
+    ) -> RetrievalScope | None:
+        if not group_id and not knowledge_base_id:
+            return None
+
+        return RetrievalScope(
+            group_id=group_id,
+            knowledge_base_id=knowledge_base_id,
+        )
 
     def _resolve_sql_dialect(self) -> str:
         database_url = (self.settings.database_url or "").lower()
