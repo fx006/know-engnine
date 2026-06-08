@@ -14,6 +14,15 @@ class Settings(BaseSettings):
     llm_fast_model: str = "qwen-turbo"
     embedding_model: str = "text-embedding-v4"
     embedding_dimensions: int = 1024
+    eval_llm_model: str = "qwen-max"
+    eval_embedding_model: str = "text-embedding-v4"
+    eval_max_concurrency: int = 2
+    eval_output_dir: str = "eval/reports"
+    eval_llm_max_tokens: int = 10240
+    eval_input_cost_per_1k_tokens: float = 0.0
+    eval_output_cost_per_1k_tokens: float = 0.0
+    eval_cost_currency: str = "CNY"
+    ragas_do_not_track: bool = True
 
     database_url: str = "sqlite+aiosqlite:///:memory:"
     database_echo: bool = False

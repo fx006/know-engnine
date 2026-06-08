@@ -41,6 +41,7 @@ class AgentState(TypedDict, total=False):
 
     grade_result: dict[str, Any] | None
     needs_rewrite: bool
+    evidence_warning: dict[str, Any] | None
 
     system_prompt: str | None
     response: str | None
@@ -90,6 +91,7 @@ def build_initial_state(
         "selected_docs": [],
         "grade_result": None,
         "needs_rewrite": False,
+        "evidence_warning": None,
         "system_prompt": None,
         "response": None,
         "progress_messages": [],

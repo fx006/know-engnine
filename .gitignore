@@ -31,6 +31,10 @@ res/
 local_private/
 new_features/
 new-features/
+RAGAS框架初探&实现原理.md
+rag评测知识总览.md
+评测数据集.md
+评测标准讨论1.md
 
 # Local learning docs and test files
 doc/
@@ -40,6 +44,9 @@ know_engine_py/tests/
 # Local smoke / demo verification scripts
 scripts/smoke/
 scripts/demo/
+
+# Local evaluation reports
+eval/reports/
 
 # Logs / temporary files
 *.log

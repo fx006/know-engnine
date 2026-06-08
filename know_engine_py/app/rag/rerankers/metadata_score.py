@@ -15,7 +15,7 @@ class MetadataScoreReranker:
     真实 BGE/CrossEncoder reranker 后续实现同一个 arerank() 协议即可替换。
     """
 
-    score_keys = ("rerankScore", "rerankedScore", "score", "_score", "rrfScore")
+    score_keys = ("rerankScore", "rerankedScore", "rrfScore", "score", "_score")
 
     async def arerank(
         self,

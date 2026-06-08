@@ -59,6 +59,9 @@ def create_clarify_node(
         checks = _get_checks(preconditions)
 
         for check in checks:
+            if not _check_applies(check, state):
+                continue
+
             entity_field = str(check.get("entity_field") or "")
             if not entity_field:
                 return _with_error(state, "前置条件配置缺少 entity_field")
@@ -148,6 +151,33 @@ def _get_checks(preconditions: dict[str, Any] | None) -> list[dict[str, Any]]:
     return [check for check in checks if isinstance(check, dict)]
 
 
+def _check_applies(check: dict[str, Any], state: AgentState) -> bool:
+    """判断当前 precondition check 是否适用于这次提问。
+
+    applies_when 是领域配置，不把汽车关键词写死在节点里；节点只提供通用的
+    query_contains_any 解释能力。没有 applies_when 的旧配置保持兼容，默认适用。
+    """
+
+    applies_when = check.get("applies_when")
+    if not isinstance(applies_when, dict) or not applies_when:
+        return True
+
+    query_keywords = _to_string_list(applies_when.get("query_contains_any"))
+    if query_keywords and not _query_contains_any(state, query_keywords):
+        return False
+
+    return True
+
+
+def _query_contains_any(state: AgentState, keywords: list[str]) -> bool:
+    texts = [
+        str(text).casefold()
+        for text in (state.get("query"), state.get("transformed_query"))
+        if text not in (None, "")
+    ]
+    return any(keyword.casefold() in text for text in texts for keyword in keywords)
+
+
 def _is_missing(value: Any) -> bool:
     if value is None:
         return True
@@ -171,6 +201,14 @@ def _project_items(
         }
         for item in items
     ]
+
+
+def _to_string_list(value: Any) -> list[str]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list | tuple | set):
+        return [str(item) for item in value if item not in (None, "")]
+    return [str(value)]
 
 
 def _with_events(

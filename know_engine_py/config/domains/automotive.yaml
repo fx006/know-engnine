@@ -58,6 +58,13 @@ intents:
       checks:
         - entity_field: car_id
           resolver: automotive_my_car
+          applies_when:
+            query_contains_any:
+              - 我的车
+              - 我的车辆
+              - 我的汽车
+              - 我这辆车
+              - 车辆是
           missing_action: card_choice
           empty_action: warn
           empty_message: 您还没有添加车辆信息，请先添加车辆信息
@@ -84,6 +91,13 @@ intents:
       checks:
         - entity_field: car_id
           resolver: automotive_my_car
+          applies_when:
+            query_contains_any:
+              - 我的车
+              - 我的车辆
+              - 我的汽车
+              - 我这辆车
+              - 车辆是
           missing_action: card_choice
           empty_action: warn
           empty_message: 您还没有添加车辆信息，请先添加车辆信息

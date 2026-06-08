@@ -14,6 +14,7 @@ from know_engine_py.app.rag.nodes.clarify_node import (
     create_clarify_node,
 )
 from know_engine_py.app.rag.nodes.common_chat_node import create_common_chat_node
+from know_engine_py.app.rag.nodes.evidence_guard_node import create_evidence_guard_node
 from know_engine_py.app.rag.nodes.generator_node import create_generator_node
 from know_engine_py.app.rag.nodes.grader_node import create_grader_node
 from know_engine_py.app.rag.nodes.intent_node import create_intent_node
@@ -76,6 +77,7 @@ def build_chat_rag_graph(
         reranker_node=create_reranker_node(document_reranker),
         grader_node=create_grader_node(prompt_service, fast_chat_model),
         rewrite_node=create_rewrite_node(prompt_service, fast_chat_model),
+        evidence_guard_node=create_evidence_guard_node(),
         reference_node=create_reference_node(),
         generator_node=create_generator_node(prompt_service, chat_model),
     )

@@ -20,6 +20,7 @@ def build_rag_graph(
     reranker_node: GraphNode,
     grader_node: GraphNode,
     rewrite_node: GraphNode,
+    evidence_guard_node: GraphNode,
     reference_node: GraphNode,
     generator_node: GraphNode,
 ):
@@ -40,6 +41,7 @@ def build_rag_graph(
     builder.add_node("grader", grader_node)
     builder.add_node("reference", reference_node)
     builder.add_node("rewrite", rewrite_node)
+    builder.add_node("evidence_guard", evidence_guard_node)
     builder.add_node("generator", generator_node)
 
     builder.set_entry_point("intent")
@@ -66,8 +68,17 @@ def build_rag_graph(
         "grader",
         _route_after_grader,
         {
-            "reference": "reference",
+            "evidence_guard": "evidence_guard",
             "rewrite": "rewrite",
+        },
+    )
+
+    builder.add_conditional_edges(
+        "evidence_guard",
+        _route_after_evidence_guard,
+        {
+            "end": END,
+            "reference": "reference",
         },
     )
 
@@ -98,11 +109,18 @@ def _route_after_clarify(state: AgentState) -> str:
 def _route_after_grader(state: AgentState) -> str:
     """根据检索评估结果决定是否进入 rewrite 循环。"""
     if not state.get("needs_rewrite"):
-        return "reference"
+        return "evidence_guard"
 
     retry_count = state.get("retry_count", 0)
     max_retries = state.get("max_retries", 0)
     if retry_count >= max_retries:
-        return "reference"
+        return "evidence_guard"
 
     return "rewrite"
+
+
+def _route_after_evidence_guard(state: AgentState) -> str:
+    if state.get("evidence_warning"):
+        return "end"
+
+    return "reference"

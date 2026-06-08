@@ -86,4 +86,12 @@ def _build_user_message(query: str, documents: list[Document]) -> str:
     if not context:
         context = "暂无可用参考资料。"
 
-    return f"参考资料：\n{context}\n\n用户问题：\n{query}"
+    return (
+        "回答边界：\n"
+        "- 只依据参考资料回答用户问题。\n"
+        "- 禁止补充参考资料未提供的额外建议、行动指引或事实判断。\n"
+        "- 不要添加营销话术、免责声明或主动追问。\n"
+        "- 如果参考资料只支持一个事实，只回答该事实。\n\n"
+        f"参考资料：\n{context}\n\n"
+        f"用户问题：\n{query}"
+    )
