@@ -34,9 +34,9 @@ def create_evidence_guard_node(
             "response": refusal_response,
             "rag_references": [],
             "evidence_warning": warning,
-            "progress_messages": [
-                *state.get("progress_messages", []),
-                "[WARN]:当前检索证据不足，已停止生成回答。",
+            "warning_messages": [
+                *state.get("warning_messages", []),
+                "当前检索证据不足，已停止生成回答。",
             ],
             "error": None,
         }

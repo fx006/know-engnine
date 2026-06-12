@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncGenerator
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -7,11 +8,13 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from know_engine_py.app.api.chat_sse import (
+    answer_delta_event,
     clarification_events,
     done_event,
+    error_event,
     progress_event,
     reference_event,
-    token_event,
+    warning_event,
 )
 from know_engine_py.app.api.dependencies.auth import get_optional_current_user
 from know_engine_py.app.db.session import get_db
@@ -35,6 +38,7 @@ from know_engine_py.app.services.chat_message_service import ChatMessageService
 from know_engine_py.app.services.access_control_service import AccessControlService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/send")
@@ -69,29 +73,49 @@ async def send_chat(
     )
     service = _build_chat_application_service(db, graph)
 
-    try:
-        result = await service.run_chat(
-            user_id=normalized_user_id,
-            query=normalized_content,
-            conversation_id=request.conversation_id,
-            group_id=group_id,
-            knowledge_base_id=knowledge_base_id,
-        )
-        await db.commit()
-    except ValueError as exc:
-        await db.rollback()
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception:
-        await db.rollback()
-        raise
-
     async def event_stream() -> AsyncGenerator[str, None]:
         yield progress_event("正在处理您的问题...")
+        has_answer_delta = False
 
-        for frame in _result_to_sse_frames(result):
-            yield frame
+        try:
+            async for event in service.stream_chat(
+                user_id=normalized_user_id,
+                query=normalized_content,
+                conversation_id=request.conversation_id,
+                group_id=group_id,
+                knowledge_base_id=knowledge_base_id,
+            ):
+                if event.kind == "progress" and event.message:
+                    yield progress_event(event.message)
+                    continue
 
-        yield done_event(result.conversation_id)
+                if event.kind == "warning" and event.message:
+                    yield warning_event(event.message)
+                    continue
+
+                if event.kind == "answer_delta" and event.message:
+                    has_answer_delta = True
+                    yield answer_delta_event(event.message)
+                    continue
+
+                if event.kind == "result" and event.result:
+                    await db.commit()
+                    for frame in _result_to_sse_frames(
+                        event.result,
+                        include_progress=False,
+                        include_warnings=False,
+                        include_answer=not has_answer_delta,
+                    ):
+                        yield frame
+                    yield done_event(event.result.conversation_id)
+                    continue
+        except ValueError as exc:
+            await db.rollback()
+            yield error_event("BAD_REQUEST", str(exc))
+        except Exception as exc:
+            await db.rollback()
+            logger.exception("聊天 SSE 流执行失败")
+            yield _exception_to_error_event(exc)
 
     return StreamingResponse(
         event_stream(),
@@ -222,18 +246,30 @@ async def _resolve_conversation_scope(
     return knowledge_base.group_id, knowledge_base.knowledge_base_id
 
 
-def _result_to_sse_frames(result: ChatRunResult) -> list[str]:
+def _result_to_sse_frames(
+    result: ChatRunResult,
+    *,
+    include_progress: bool = True,
+    include_warnings: bool = True,
+    include_answer: bool = True,
+) -> list[str]:
     """把应用层结果转成 SSE 帧。"""
     frames: list[str] = []
 
-    frames.extend(_progress_frames(result))
+    if include_progress:
+        frames.extend(_progress_frames(result))
+    if include_warnings:
+        frames.extend(_warning_frames(result))
+    frames.extend(_error_frames(result))
+    if result.state.get("error"):
+        return frames
 
     if result.clarification_events:
         frames.extend(clarification_events(result.clarification_events))
         return frames
 
-    if result.response:
-        frames.append(token_event(result.response))
+    if include_answer and result.response:
+        frames.append(answer_delta_event(result.response))
 
     if result.rag_references:
         frames.append(reference_event(result.rag_references))
@@ -253,12 +289,103 @@ def _progress_frames(result: ChatRunResult) -> list[str]:
     return frames
 
 
+def _warning_frames(result: ChatRunResult) -> list[str]:
+    """把 LangGraph state 中的警告转成 SSE 帧。"""
+    warnings: list[str] = []
+
+    for message in result.state.get("warning_messages") or []:
+        normalized_message = str(message or "").strip()
+        if normalized_message:
+            warnings.append(normalized_message)
+
+    # 兼容旧节点把 [WARN] 暂存在 progress_messages 的历史形态。
+    for message in result.state.get("progress_messages") or []:
+        normalized_message = _normalize_warning_message(message)
+        if normalized_message:
+            warnings.append(normalized_message)
+
+    evidence_warning = result.state.get("evidence_warning")
+    if evidence_warning and not warnings:
+        reason = evidence_warning.get("reason") or "当前检索证据不足"
+        warnings.append(str(reason))
+
+    frames: list[str] = []
+    seen: set[str] = set()
+    for warning in warnings:
+        if warning in seen:
+            continue
+        seen.add(warning)
+        frames.append(warning_event(warning))
+
+    return frames
+
+
+def _error_frames(result: ChatRunResult) -> list[str]:
+    """把 LangGraph state 中的错误转成 SSE 帧。"""
+    error = result.state.get("error")
+    if not error:
+        return []
+
+    if isinstance(error, dict):
+        code = str(error.get("code") or "GRAPH_ERROR")
+        message = str(error.get("message") or "图执行失败")
+        return [error_event(code, message)]
+
+    return [error_event("GRAPH_ERROR", str(error))]
+
+
+def _exception_to_error_event(exc: Exception) -> str:
+    """把流式执行期异常映射成稳定 SSE 错误码。
+
+    StreamingResponse 已经开始后不能再改 HTTP 状态码，所以这里用 SSE error
+    承担前端协议；provider 原始错误只进日志，避免把额度、账号等细节暴露给用户。
+    """
+    if _is_llm_provider_error(exc):
+        return error_event("LLM_PROVIDER_ERROR", "大模型服务暂不可用，请稍后重试")
+
+    return error_event("INTERNAL_ERROR", "聊天处理失败")
+
+
+def _is_llm_provider_error(exc: Exception) -> bool:
+    """识别 OpenAI 兼容 LLM 客户端的常见上游异常。"""
+    exc_type = type(exc)
+    exc_name = exc_type.__name__
+    exc_module = exc_type.__module__
+
+    if exc_name in {
+        "APIConnectionError",
+        "APIError",
+        "APIStatusError",
+        "AuthenticationError",
+        "BadRequestError",
+        "InternalServerError",
+        "PermissionDeniedError",
+        "RateLimitError",
+    }:
+        return True
+
+    return exc_module.startswith(("openai", "langchain_openai")) and hasattr(
+        exc,
+        "status_code",
+    )
+
+
 def _normalize_progress_message(message: object) -> str:
     """兼容 node 内部已经带 [PROGRESS]: 前缀的消息。"""
     normalized = str(message or "").strip()
     if normalized.startswith("[PROGRESS]:"):
         return normalized.removeprefix("[PROGRESS]:").strip()
+    if normalized.startswith("[WARN]:"):
+        return ""
     return normalized
+
+
+def _normalize_warning_message(message: object) -> str:
+    """兼容 node 内部已经带 [WARN]: 前缀的消息。"""
+    normalized = str(message or "").strip()
+    if normalized.startswith("[WARN]:"):
+        return normalized.removeprefix("[WARN]:").strip()
+    return ""
 
 
 def _resolve_user_id(

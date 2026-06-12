@@ -99,6 +99,7 @@ def _case_result_to_dict(result, *, ragas_score: RagasTextScores | None) -> dict
             "evidence_warning": final_state.get("evidence_warning"),
             "rag_references": list(result.rag_references),
             "progress_messages": list(final_state.get("progress_messages") or []),
+            "warning_messages": list(final_state.get("warning_messages") or []),
             "error": result.error,
             "elapsed_ms": result.elapsed_ms,
         },

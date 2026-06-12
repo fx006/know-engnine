@@ -47,6 +47,7 @@ class AgentState(TypedDict, total=False):
     response: str | None
 
     progress_messages: list[str]
+    warning_messages: list[str]
     rag_references: list[dict[str, Any]]
 
     retry_count: int
@@ -95,6 +96,7 @@ def build_initial_state(
         "system_prompt": None,
         "response": None,
         "progress_messages": [],
+        "warning_messages": [],
         "rag_references": [],
         "retry_count": 0,
         "max_retries": max_retries,

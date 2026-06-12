@@ -99,6 +99,26 @@ class ChatMessageService:
         await self.session.flush()
         return message
 
+    async def update_extra_metadata(
+        self,
+        message_id: str,
+        metadata: dict,
+    ) -> ChatMessageModel:
+        """回写 assistant 消息扩展元数据。
+
+        用于保存非正文、非引用的结构化展示契约，例如澄清卡片事件。
+        """
+        message = await self._get_message_or_raise(
+            message_id,
+            expected_type=ChatMessageType.ASSISTANT,
+        )
+        message.extra_metadata = {
+            **(message.extra_metadata or {}),
+            **metadata,
+        }
+        await self.session.flush()
+        return message
+
     async def update_content(
         self,
         message_id: str,

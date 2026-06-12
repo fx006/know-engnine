@@ -19,6 +19,15 @@ def token_event(content: str) -> str:
     return sse_data(content)
 
 
+def answer_delta_event(content: str) -> str:
+    """输出答案增量。
+
+    当前 wire format 仍保持 Java 兼容：答案文本不加业务前缀，直接写入 data。
+    单独提供该函数，是为了让 API 层和后续前端都能用 answer_delta 语义命名。
+    """
+    return token_event(content)
+
+
 def progress_event(message: str) -> str:
     """输出进度事件。"""
     return sse_data(f"[PROGRESS]:{message}")
@@ -37,6 +46,13 @@ def done_event(conversation_id: str) -> str:
 def warning_event(message: str) -> str:
     """输出警告事件。"""
     return sse_data(f"[WARN]:{message}")
+
+
+def error_event(code: str, message: str) -> str:
+    """输出错误事件。"""
+    return sse_data(
+        f"[ERROR]:{_to_json({'code': code, 'message': message})}"
+    )
 
 
 def clarification_events(events: Iterable[Mapping[str, Any]]) -> list[str]:

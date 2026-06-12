@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import Any, Protocol
 
 from langchain_core.documents import Document
 from langchain_core.language_models import BaseChatModel
+from langgraph.config import get_stream_writer
 
 from know_engine_py.app.rag.nodes.message_history import build_chat_messages
 from know_engine_py.app.rag.state import AgentState
@@ -58,21 +59,20 @@ def create_generator_node(
             }
 
         docs = state.get("selected_docs") or state.get("retrieved_docs") or []
-        response = await chat_model.ainvoke(
-            build_chat_messages(
-                system_prompt=prompt,
-                chat_history=state.get("chat_history"),
-                current_user_message=_build_user_message(
-                    query=state["query"],
-                    documents=docs,
-                ),
-            )
+        messages = build_chat_messages(
+            system_prompt=prompt,
+            chat_history=state.get("chat_history"),
+            current_user_message=_build_user_message(
+                query=state["query"],
+                documents=docs,
+            ),
         )
+        response_content = await _generate_response_content(chat_model, messages)
 
         return {
             **state,
             "system_prompt": prompt,
-            "response": response.content.strip(),
+            "response": response_content,
             "progress_messages": progress_messages,
             "error": None,
         }
@@ -95,3 +95,46 @@ def _build_user_message(query: str, documents: list[Document]) -> str:
         f"参考资料：\n{context}\n\n"
         f"用户问题：\n{query}"
     )
+
+
+async def _generate_response_content(
+    chat_model: BaseChatModel,
+    messages: list[Any],
+) -> str:
+    """调用生成模型；在 LangGraph streaming 上下文中同步发 answer_delta。"""
+    stream_writer = _get_optional_stream_writer()
+    if stream_writer is not None and hasattr(chat_model, "astream"):
+        chunks: list[str] = []
+        async for chunk in chat_model.astream(messages):
+            content = _content_to_text(getattr(chunk, "content", ""))
+            if not content:
+                continue
+            chunks.append(content)
+            stream_writer({"type": "answer_delta", "content": content})
+        return "".join(chunks).strip()
+
+    response = await chat_model.ainvoke(messages)
+    return _content_to_text(getattr(response, "content", "")).strip()
+
+
+def _get_optional_stream_writer():
+    try:
+        return get_stream_writer()
+    except RuntimeError:
+        return None
+
+
+def _content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text")
+                if text:
+                    parts.append(str(text))
+        return "".join(parts)
+    return str(content or "")
