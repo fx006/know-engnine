@@ -12,6 +12,8 @@ from know_engine_py.app.db.session import get_session_maker
 
 router = APIRouter()
 
+HEALTH_COMPONENT_TIMEOUT_SECONDS = 6.0
+
 
 @router.get("/health")
 async def health_check(
@@ -26,15 +28,21 @@ async def health_check(
     需要真实连通性时传 `deep=true`，用于部署 smoke 或人工排障。
     """
     settings = get_settings()
+    database, redis, minio, elasticsearch = await asyncio.gather(
+        _check_with_timeout("数据库", _check_database(deep=deep)),
+        _check_with_timeout("Redis", _check_redis(settings.redis_url, deep=deep)),
+        _check_with_timeout("MinIO", _check_minio(settings, deep=deep)),
+        _check_with_timeout(
+            "Elasticsearch",
+            _check_elasticsearch(settings.elasticsearch_url, deep=deep),
+        ),
+    )
     components = {
         "app": _component("ok", "应用进程可响应"),
-        "database": await _check_database(deep=deep),
-        "redis": await _check_redis(settings.redis_url, deep=deep),
-        "minio": await _check_minio(settings, deep=deep),
-        "elasticsearch": await _check_elasticsearch(
-            settings.elasticsearch_url,
-            deep=deep,
-        ),
+        "database": database,
+        "redis": redis,
+        "minio": minio,
+        "elasticsearch": elasticsearch,
         "llm": _check_llm_config(settings),
     }
 
@@ -56,6 +64,30 @@ def _component(status: str, detail: str, **extra: Any) -> dict[str, Any]:
     }
     data.update(extra)
     return data
+
+
+async def _check_with_timeout(
+    component_name: str,
+    check: Any,
+) -> dict[str, Any]:
+    """限制单个外部组件健康检查耗时，避免坏依赖拖死整个 health API。"""
+    try:
+        return await asyncio.wait_for(
+            check,
+            timeout=HEALTH_COMPONENT_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        return _component(
+            "error",
+            f"{component_name} 连通性检查超时",
+            error=f"超过 {HEALTH_COMPONENT_TIMEOUT_SECONDS:.0f} 秒未返回",
+        )
+    except Exception as exc:
+        return _component(
+            "error",
+            f"{component_name} 连通性检查失败",
+            error=str(exc),
+        )
 
 
 def _overall_status(components: dict[str, dict[str, Any]]) -> str:

@@ -11,11 +11,14 @@ htmlcov/
 .venv/
 venv/
 env/
+node_modules/
+dist/
 
 # Local environment files
 .env
 .env.*
 !.env.example
+*.local
 
 # IDE / OS files
 .idea/

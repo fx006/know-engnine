@@ -1,14 +1,20 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from know_engine_py.app.api.dependencies.auth import get_optional_current_user
+from know_engine_py.app.api.dependencies.auth import (
+    get_current_user,
+    get_optional_current_user,
+)
 from know_engine_py.app.db.session import get_db
 from know_engine_py.app.models.auth import UserModel
-from know_engine_py.app.models.document import KnowledgeSegmentModel
+from know_engine_py.app.models.document import (
+    KnowledgeDocumentModel,
+    KnowledgeSegmentModel,
+)
 from know_engine_py.app.models.enums import FileObjectStatus, KnowledgeBaseType
 from know_engine_py.app.models.upload import FileObjectModel
 from know_engine_py.app.schemas.document import (
@@ -39,6 +45,48 @@ def _build_source_object_name(file_name: str) -> str:
     """生成原始上传文件在对象存储中的 object name。"""
     safe_name = Path(file_name).name or "unknown"
     return f"source/{uuid4().hex}-{safe_name}"
+
+
+@router.get(
+    "",
+    response_model=list[DocumentResponse],
+    response_model_by_alias=False,
+)
+async def list_documents(
+    knowledge_base_id: str = Query(alias="knowledgeBaseId"),
+    db: AsyncSession = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    """查询当前用户在指定知识库下可见的文档列表。
+
+    这是客户端文档工作台的列表入口；全局搜索、分页筛选和管理端审计后续再做。
+    """
+    normalized_knowledge_base_id = knowledge_base_id.strip()
+    if not normalized_knowledge_base_id:
+        raise HTTPException(status_code=400, detail="knowledgeBaseId 不能为空")
+
+    access_service = AccessControlService(db)
+    knowledge_base = await access_service.get_knowledge_base(
+        normalized_knowledge_base_id
+    )
+    if knowledge_base is None or knowledge_base.status != "active":
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    if not await access_service.is_group_member(
+        group_id=knowledge_base.group_id,
+        user_id=current_user.user_id,
+    ):
+        raise HTTPException(status_code=403, detail="用户不是知识库所属群组成员")
+
+    result = await db.execute(
+        select(KnowledgeDocumentModel)
+        .where(KnowledgeDocumentModel.knowledge_base_id == normalized_knowledge_base_id)
+        .where(KnowledgeDocumentModel.group_id == knowledge_base.group_id)
+        .order_by(
+            KnowledgeDocumentModel.created_at.desc(),
+            KnowledgeDocumentModel.doc_id.desc(),
+        )
+    )
+    return list(result.scalars().all())
 
 
 @router.post("/import", response_model=DocumentImportResponse)

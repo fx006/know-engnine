@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "know-engine-py"
     environment: str = "local"
+    cors_allowed_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
 
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
